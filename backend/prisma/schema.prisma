@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Worker {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String   @unique
+  city         String
+  zone         String
+  platform     String // "zepto" | "blinkit" | "zomato" etc.
+  dailyIncome  Float
+  workingHours Int      @default(8)
+  workStartHour Int     @default(9)
+  workEndHour  Int      @default(19)
+  createdAt    DateTime @default(now())
+  policies     Policy[]
+  claims       Claim[]
+}
+
+model Policy {
+  id             String   @id @default(cuid())
+  workerId       String
+  worker         Worker   @relation(fields: [workerId], references: [id])
+  coveragePct    Float // 0.50 | 0.70 | 0.90
+  coverageLimit  Float // weekly_income x coverage_pct
+  weeklyPremium  Float
+  riskScore      Float
+  status         String   @default("ACTIVE") // "ACTIVE" | "EXPIRED" | "CANCELLED"
+  weekStartDate  DateTime
+  weekEndDate    DateTime
+  remainingLimit Float // starts equal to coverageLimit, decremented per payout
+  createdAt      DateTime @default(now())
+  claims         Claim[]
+}
+
+model Claim {
+  id           String   @id @default(cuid())
+  workerId     String
+  worker       Worker   @relation(fields: [workerId], references: [id])
+  policyId     String
+  policy       Policy   @relation(fields: [policyId], references: [id])
+  triggerType  String // "RAIN" | "AQI" | "HEAT" | "ZONE_CLOSURE"
+  triggerStart DateTime
+  triggerEnd   DateTime
+  hoursLost    Float
+  hourlyIncome Float
+  rawPayout    Float // before caps
+  finalPayout  Float // after caps
+  status       String   @default("PROCESSING") // "PROCESSING" | "APPROVED" | "PAID" | "FLAGGED" | "REJECTED"
+  fraudFlags   String[] @default([])
+  eventDate    DateTime
+  createdAt    DateTime @default(now())
+  payment      Payment?
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  claimId       String   @unique
+  claim         Claim    @relation(fields: [claimId], references: [id])
+  amount        Float
+  method        String // "UPI_MOCK" | "RAZORPAY_TEST"
+  transactionId String
+  status        String // "PENDING" | "SUCCESS" | "FAILED"
+  processedAt   DateTime @default(now())
+}
+
+model TriggerEvent {
+  id             String    @id @default(cuid())
+  city           String
+  zone           String
+  triggerType    String
+  triggerValue   Float // actual rainfall mm/hr, AQI, temperature, etc.
+  thresholdValue Float // 20, 300, 42, etc.
+  startTime      DateTime
+  endTime        DateTime?
+  isActive       Boolean   @default(true)
+  dataSource     String // "OpenWeatherMap" | "WAQI" | "MockAPI"
+  createdAt      DateTime  @default(now())
+}
