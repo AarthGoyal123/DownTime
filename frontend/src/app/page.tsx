@@ -45,6 +45,9 @@ interface Policy {
   weeklyPremium: number;
   startDate: string;
   status: string;
+  coverageLimit: number;
+  remainingLimit: number;
+  weekEndDate: string;
 }
 
 interface Claim {
@@ -53,6 +56,10 @@ interface Claim {
   amount: number;
   status: string;
   createdAt: string;
+  eventDate: string;
+  triggerType: string;
+  hoursLost: number;
+  finalPayout: number;
 }
 
 interface DashboardData {
