@@ -1,4 +1,4 @@
-# GigShield — AI-Powered Parametric Income Protection
+# DownTime — AI-Powered Parametric Income Protection
 
 ## The Problem
 Urban delivery gig workers lose roughly 20–25% of their monthly income to unpredictable external disruptions like torrential monsoon rains, extreme heat waves, or unannounced area curfews. Traditional insurance completely fails them, offering zero protection for lost working hours and requiring complex, manual claims processes they don't have time for.
@@ -60,12 +60,40 @@ To ensure sustainability, the system runs 3 automated fraud checks before any pa
 * **`backend/`**: NestJS Core (Port 3001).
 * **`frontend/`**: Next.js Dashboard (Port 3000).
 * **`ai-service/`**: Python Risk Engine (Port 8000).
+* **`docs/`**: Detailed design docs (persona, triggers, risk model, fraud rules).
+
+## Architecture
+```
+┌─────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│   Next.js   │ ───► │   NestJS API     │ ───► │  FastAPI AI      │
+│  Dashboard  │      │   (Port 3001)    │      │  Risk Engine     │
+│ (Port 3000) │      │                  │      │  (Port 8000)     │
+└─────────────┘      │  ┌────────────┐  │      │                  │
+                     │  │  Prisma    │  │      │  4-Factor Score  │
+                     │  │  + Postgres│  │      │  Weather  (40%)  │
+                     │  └────────────┘  │      │  Location (30%)  │
+                     │                  │      │  Seasonal (20%)  │
+                     │  Modules:        │      │  History  (10%)  │
+                     │  Worker │ Policy │      └──────────────────┘
+                     │  Claims │ Fraud  │              │
+                     │  Trigger│ Premium│      ┌───────┴────────┐
+                     │  Dashboard       │      │ OpenWeatherMap │
+                     └──────────────────┘      │ WAQI API       │
+                             │                 └────────────────┘
+                     ┌───────┴────────┐
+                     │   Cron Jobs    │
+                     │ (Every 15 min) │
+                     │ Poll weather → │
+                     │ Check triggers │
+                     │ Auto-payout    │
+                     └────────────────┘
+```
 
 ## Local Setup
-1. **Root**: Fill in `OPENWEATHER_API_KEY` in the root `.env`.
-2. **Backend**: `npm install` && `npx prisma generate` && `npm run dev`.
-3. **Frontend**: `npm install` && `npm run dev`.
-4. **AI Service**: `pip install -r requirements.txt` && `python main.py`.
+1. **Root**: Copy `.env.example` to `.env` and fill in your API keys.
+2. **Backend**: `cd backend && npm install && npx prisma generate && npm run dev`.
+3. **Frontend**: `cd frontend && npm install && npm run dev`.
+4. **AI Service**: `cd ai-service && pip install -r requirements.txt && python main.py`.
 
 ## Why Web Platform
 Delivery workers already have multiple required apps (e.g., Zepto app, navigation). A responsive web application ensures zero friction for onboarding, bypasses Play Store approval delays for continuous deployment, and works seamlessly on low-end Android devices without taking up storage space.
