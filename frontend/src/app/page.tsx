@@ -66,6 +66,12 @@ interface DashboardData {
   activePolicy: Policy | null;
   claims: Claim[];
   worker: WorkerProfile;
+  activeEvent?: {
+    triggerType: string;
+    city: string;
+    zone: string;
+    startTime: string;
+  };
   stats: {
     totalPayouts: number;
     protectedDays: number;
@@ -260,6 +266,23 @@ export default function Home() {
           <p className="text-slate-400">Manage your policies and track instant payouts.</p>
         </header>
 
+        {dashboardData?.activeEvent && (
+          <div className="mb-8 p-6 bg-red-500/10 border border-red-500/30 rounded-3xl flex items-center justify-between animate-pulse ring-4 ring-red-500/5">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-red-500/20 rounded-2xl">
+                <AlertCircle className="w-8 h-8 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-red-400 uppercase tracking-tight">Active Disruption Detected</h3>
+                <p className="text-slate-300">
+                  {dashboardData.activeEvent.triggerType} in <strong>{dashboardData.activeEvent.zone}</strong>. 
+                  Your protection is actively monitoring and securing your earnings.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
             <p className="text-slate-400 text-sm mb-1">Total Payouts</p>
@@ -300,8 +323,12 @@ export default function Home() {
                         <td className="px-6 py-4 text-sm">{claim.hoursLost}h</td>
                         <td className="px-6 py-4 text-sm text-green-400 font-bold">₹{claim.finalPayout}</td>
                         <td className="px-6 py-4">
-                          <span className="px-2 py-1 bg-green-500/10 text-green-400 text-[10px] font-bold rounded-md">
-                            {claim.status}
+                          <span className={`px-2 py-1 text-[10px] font-bold rounded-md ${
+                            claim.status === 'PAID' ? 'bg-green-500/20 text-green-400' : 
+                            claim.status === 'APPROVED' ? 'bg-blue-500/20 text-blue-400' :
+                            'bg-orange-500/20 text-orange-400'
+                          }`}>
+                            {claim.status === 'PAID' ? 'PAID (INSTANT)' : claim.status}
                           </span>
                         </td>
                       </tr>
