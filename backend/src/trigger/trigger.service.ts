@@ -1,5 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { ClaimsService } from '../claims/claims.service';
+import { firstValueFrom } from 'rxjs';
 
 // Mock zone status data
 const ZONE_STATUS: Record<string, Record<string, string>> = {
@@ -11,9 +16,9 @@ const ZONE_STATUS: Record<string, Record<string, string>> = {
 
 // Trigger thresholds
 const TRIGGERS = {
-  RAIN: { threshold: 20, unit: 'mm/hr' },
+  RAIN: { threshold: 10, unit: 'mm/hr' }, // Lowered to 10 for more visible triggers in demo
   AQI: { threshold: 300, unit: 'index' },
-  HEAT: { threshold: 42, unit: '°C' },
+  HEAT: { threshold: 40, unit: '°C' },
   ZONE_CLOSURE: { threshold: 1, unit: 'boolean' }, // 1 = closed
 };
 
@@ -24,7 +29,81 @@ const SEVERITY_ORDER = ['ZONE_CLOSURE', 'RAIN', 'AQI', 'HEAT'];
 export class TriggerService {
   private readonly logger = new Logger(TriggerService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private http: HttpService,
+    private config: ConfigService,
+    @Inject(forwardRef(() => ClaimsService))
+    private claimsService: ClaimsService,
+  ) {}
+
+  /**
+   * Autonomous Monitoring Loop (Cron)
+   * Runs every 5 minutes in demo mode (simulating real-time policing)
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async handleAutonomousMonitoring() {
+    this.logger.log('>>> SYSTEM: Running Autonomous Parametric Monitoring...');
+    
+    // 1. Find all active policies WITH their worker's city/zone
+    const activePolicies = await this.prisma.policy.findMany({
+      where: { status: 'ACTIVE' },
+      include: { worker: true },
+    });
+
+    if (activePolicies.length === 0) {
+      this.logger.log('>>> SYSTEM: No active policies found. Monitoring paused.');
+      return;
+    }
+
+    // 2. Identify unique disrupted zones
+    const uniqueZones = Array.from(new Set(activePolicies.map(p => `${p.worker.city}|${p.worker.zone}`)));
+    const aiServiceUrl = this.config.get<string>('AI_SERVICE_URL', 'http://127.0.0.1:8000');
+
+    for (const zoneKey of uniqueZones) {
+      const [city, zone] = zoneKey.split('|');
+      
+      try {
+        const response = await firstValueFrom(
+          this.http.get(`${aiServiceUrl}/weather/current`, {
+            params: { city, zone }
+          })
+        );
+
+        const weather = response.data;
+        
+        if (weather.is_disrupted) {
+          this.logger.warn(`!!! DISRUPTION DETECTED: [${weather.trigger_type}] in ${city}/${zone}`);
+          
+          // 3. Record the event
+          await this.recordTriggerEvent({
+            city: city,
+            zone: zone,
+            triggerType: weather.trigger_type,
+            triggerValue: weather.rain_mm_hr || weather.aqi || weather.temperature_c,
+            thresholdValue: TRIGGERS[weather.trigger_type]?.threshold || 0,
+            startTime: new Date(),
+            dataSource: 'AI_DYNAMIC_MONITOR',
+          });
+
+          // 4. AUTO-INITIATE CLAIMS for all workers in this specific zone
+          const affectedPolicies = activePolicies.filter(p => p.worker.city === city && p.worker.zone === zone);
+
+          for (const policy of affectedPolicies) {
+            this.logger.log(`>> Creating Automated Claim for Policy: ${policy.id} (Worker: ${policy.worker.name})`);
+            await this.claimsService.createClaim({
+              policyId: policy.id,
+              triggerType: weather.trigger_type,
+              eventDate: new Date(),
+              hoursLost: 4, 
+            });
+          }
+        }
+      } catch (error) {
+        this.logger.error(`Failed to monitor zone ${city}/${zone}: ${error.message}`);
+      }
+    }
+  }
 
   /**
    * Check all triggers for a city/zone
