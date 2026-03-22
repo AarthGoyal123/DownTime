@@ -168,6 +168,49 @@ class RiskResponse(BaseModel):
     risk_label: str  # "Low" | "Medium" | "High" | "Very High"
 
 
+# ─── Endpoints ────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "service": "downtime-ai-risk-engine"}
+
+
+@app.post("/risk/calculate", response_model=RiskResponse)
+def calculate_risk(req: RiskRequest) -> RiskResponse:
+    """Calculate composite risk score from weather, location, seasonal, and historical factors."""
+    weather_risk = calculate_weather_risk(req.rain_mm_hr, req.temperature_c, req.aqi)
+    location_risk = get_location_risk(req.city, req.zone)
+    seasonal_risk = calculate_seasonal_risk(req.city, req.date)
+    historical_risk = calculate_historical_risk(req.disruption_count_30d)
+
+    # Master formula — weighted sum
+    raw_score = (
+        weather_risk * 0.40
+        + location_risk * 0.30
+        + seasonal_risk * 0.20
+        + historical_risk * 0.10
+    )
+
+    # Clamp to [0.10, 0.90]
+    risk_score = round(max(0.10, min(0.90, raw_score)), 3)
+
+    # Risk label
+    risk_label = (
+        "Low" if risk_score < 0.30
+        else "Medium" if risk_score < 0.55
+        else "High" if risk_score < 0.75
+        else "Very High"
+    )
+
+    return RiskResponse(
+        risk_score=risk_score,
+        weather_risk=weather_risk,
+        location_risk=location_risk,
+        seasonal_risk=seasonal_risk,
+        historical_risk=historical_risk,
+        risk_label=risk_label,
+    )
+
 # ─── New Features: Monitoring & Fraud ──────────────────────────────────────────
 
 class WeatherResponse(BaseModel):
