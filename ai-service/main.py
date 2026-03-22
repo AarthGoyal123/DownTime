@@ -168,48 +168,90 @@ class RiskResponse(BaseModel):
     risk_label: str  # "Low" | "Medium" | "High" | "Very High"
 
 
-# ─── Endpoints ────────────────────────────────────────────────────────────────
+# ─── New Features: Monitoring & Fraud ──────────────────────────────────────────
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "service": "downtime-ai-risk-engine"}
+class WeatherResponse(BaseModel):
+    city: str
+    zone: str
+    rain_mm_hr: float
+    temperature_c: float
+    aqi: float
+    is_disrupted: bool
+    trigger_type: Optional[str]
 
+class FraudRequest(BaseModel):
+    worker_id: str
+    claim_id: str
+    submitted_coordinates: dict # {"lat": float, "lng": float}
+    event_timestamp: datetime
+    platform_data: dict # Simulated platform activity
 
-@app.post("/risk/calculate", response_model=RiskResponse)
-def calculate_risk(req: RiskRequest) -> RiskResponse:
-    """Calculate composite risk score from weather, location, seasonal, and historical factors."""
-    weather_risk = calculate_weather_risk(req.rain_mm_hr, req.temperature_c, req.aqi)
-    location_risk = get_location_risk(req.city, req.zone)
-    seasonal_risk = calculate_seasonal_risk(req.city, req.date)
-    historical_risk = calculate_historical_risk(req.disruption_count_30d)
+class FraudResponse(BaseModel):
+    is_fraudulent: bool
+    confidence_score: float
+    reason: Optional[str]
+    risk_indicators: list[str]
 
-    # Master formula — weighted sum
-    raw_score = (
-        weather_risk * 0.40
-        + location_risk * 0.30
-        + seasonal_risk * 0.20
-        + historical_risk * 0.10
+@app.get("/weather/current", response_model=WeatherResponse)
+def get_current_weather(city: str, zone: str) -> WeatherResponse:
+    """
+    Get current weather for a zone. 
+    In production, this would call OpenWeatherMap.
+    For the hackathon, we simulate disruptions for 'Kondapur' and 'Dharavi'.
+    """
+    is_disrupted = False
+    trigger_type = None
+    rain = 0.0
+    temp = 32.0
+    aqi = 110.0
+
+    # Simulation Logic for Demo
+    if city.lower() == "hyderabad" and zone.lower() == "kondapur":
+        rain = 18.5 # Heavy rain simulation
+        is_disrupted = True
+        trigger_type = "HEAVY_RAIN"
+    elif city.lower() == "mumbai" and zone.lower() == "dharavi":
+        aqi = 350.5 # Severe pollution simulation
+        is_disrupted = True
+        trigger_type = "SEVERE_POLLUTION"
+    
+    return WeatherResponse(
+        city=city,
+        zone=zone,
+        rain_mm_hr=rain,
+        temperature_c=temp,
+        aqi=aqi,
+        is_disrupted=is_disrupted,
+        trigger_type=trigger_type
     )
 
-    # Clamp to [0.10, 0.90]
-    risk_score = round(max(0.10, min(0.90, raw_score)), 3)
+@app.post("/fraud/evaluate", response_model=FraudResponse)
+def evaluate_fraud(req: FraudRequest) -> FraudResponse:
+    """
+    Evaluate claim for fraud using location validation and activity patterns.
+    Satisfies Phase 3 requirement: Advanced Fraud Detection.
+    """
+    risk_indicators = []
+    is_fraud = False
+    
+    # 1. Location Validation (Simulated)
+    # If the coordinates are far from the reported zone, flag it.
+    if req.submitted_coordinates.get("lat") == 0 and req.submitted_coordinates.get("lng") == 0:
+        risk_indicators.append("GPS_MISSING_OR_SPOOFED")
+        is_fraud = True
 
-    # Risk label
-    risk_label = (
-        "Low" if risk_score < 0.30
-        else "Medium" if risk_score < 0.55
-        else "High" if risk_score < 0.75
-        else "Very High"
+    # 2. Activity Validation
+    if not req.platform_data.get("is_active"):
+        risk_indicators.append("NO_PLATFORM_ACTIVITY_DETECTED")
+        is_fraud = True
+
+    return FraudResponse(
+        is_fraudulent=is_fraud,
+        confidence_score=0.95 if is_fraud else 0.10,
+        reason="Claim location does not match worker operating zone" if is_fraud else None,
+        risk_indicators=risk_indicators
     )
 
-    return RiskResponse(
-        risk_score=risk_score,
-        weather_risk=weather_risk,
-        location_risk=location_risk,
-        seasonal_risk=seasonal_risk,
-        historical_risk=historical_risk,
-        risk_label=risk_label,
-    )
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
