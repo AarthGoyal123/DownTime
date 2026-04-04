@@ -37,33 +37,25 @@ export class ClaimService {
   }
 
   /**
-   * Simulate a trigger for demo purposes (Phase 1 only)
+   * Create a claim (Autonomous or Manual)
+   * This handles the core logic of income protection payouts.
    */
-  async simulateTrigger(params: {
-    workerId: string;
+  async createClaim(data: {
+    policyId: string;
     triggerType: string;
-    hoursLost?: number;
+    eventDate: Date;
+    hoursLost: number;
     triggerValue?: number;
   }) {
-    const worker = await this.prisma.worker.findUnique({
-      where: { id: params.workerId },
+    const policy = await this.prisma.policy.findUnique({
+      where: { id: data.policyId },
+      include: { worker: true },
     });
-    if (!worker) throw new NotFoundException('Worker not found');
+    if (!policy) throw new NotFoundException('Policy not found');
 
-    // Get active policy
-    const policy = await this.prisma.policy.findFirst({
-      where: {
-        workerId: params.workerId,
-        status: 'ACTIVE',
-        weekEndDate: { gte: new Date() },
-      },
-    });
-    if (!policy) throw new NotFoundException('No active policy found');
-
-    // Calculate hours lost (default 3.5 for demo)
-    const hoursLost = params.hoursLost ?? 3.5;
+    const worker = policy.worker;
     const hourlyIncome = worker.dailyIncome / worker.workingHours;
-    const rawPayout = hourlyIncome * hoursLost;
+    const rawPayout = hourlyIncome * data.hoursLost;
 
     // Apply caps
     let finalPayout = Math.min(rawPayout, policy.coverageLimit);
@@ -72,53 +64,112 @@ export class ClaimService {
 
     const now = new Date();
     const triggerStart = new Date(now);
-    triggerStart.setHours(triggerStart.getHours() - Math.ceil(hoursLost));
+    triggerStart.setHours(triggerStart.getHours() - Math.ceil(data.hoursLost));
 
-    // Run fraud checks
-    const fraudResult = await this.fraudService.runAllChecks({
-      workerId: params.workerId,
-      triggerType: params.triggerType,
-      eventDate: now,
-      hoursLost,
-      payout: finalPayout,
-      coverageLimit: policy.coverageLimit,
-    });
+    // ─── REAL Fraud Detection (wired in Phase 3) ───
+    let fraudFlags: string[] = [];
+    let mlFraudScore: number | null = null;
+    let weatherVerified = false;
 
-    const status = fraudResult.passed ? 'APPROVED' : 'FLAGGED';
+    try {
+      // 1. Run rule-based fraud checks
+      const fraudResult = await this.fraudService.runAllChecks({
+        workerId: worker.id,
+        claimAmount: rawPayout,
+        triggerType: data.triggerType,
+        city: worker.city,
+        zone: worker.zone,
+        eventDate: data.eventDate,
+      });
+      fraudFlags = fraudResult.flags || [];
+
+      // 2. Cross-verify weather with AI service
+      try {
+        const axios = require('axios');
+        const weatherResp = await axios.get(`http://localhost:8000/weather/live/${worker.city}`);
+        const weather = weatherResp.data;
+        weatherVerified = weather.source === 'openweathermap_live';
+
+        // Verify the trigger matches actual weather conditions
+        if (data.triggerType === 'RAIN' && weather.rain_mm_hr < 5) {
+          fraudFlags.push('WEATHER_MISMATCH_RAIN');
+        }
+        if (data.triggerType === 'HEAT' && weather.temperature_c < 38) {
+          fraudFlags.push('WEATHER_MISMATCH_HEAT');
+        }
+        if (data.triggerType === 'AQI' && weather.aqi < 200) {
+          fraudFlags.push('WEATHER_MISMATCH_AQI');
+        }
+
+        // 3. ML anomaly detection
+        const mlFraudResp = await axios.post('http://localhost:8000/fraud/ml-evaluate', {
+          rain_mm_hr: weather.rain_mm_hr || 0,
+          temperature_c: weather.temperature_c || 30,
+          aqi: weather.aqi || 100,
+          wind_kmh: weather.wind_kmh || 10,
+          humidity_pct: weather.humidity_pct || 50,
+          daily_income: worker.dailyIncome,
+          working_hours: worker.workingHours,
+          experience_days: worker.experienceDays || 30,
+          no_claim_streak: worker.noClaimStreak || 0,
+          claims_30d: worker.totalClaims || 0,
+        });
+        mlFraudScore = mlFraudResp.data.anomaly_score;
+        if (mlFraudResp.data.is_anomaly) {
+          fraudFlags.push('ML_ANOMALY_DETECTED');
+        }
+      } catch (aiErr) {
+        this.logger.warn(`AI fraud check unavailable: ${aiErr.message}`);
+      }
+    } catch (fraudErr) {
+      this.logger.warn(`Fraud service error: ${fraudErr.message}, auto-approving parametric claim`);
+    }
+
+    const isFlagged = fraudFlags.length > 0;
+    const status = isFlagged ? 'FLAGGED' : 'APPROVED';
 
     // Create claim
     const claim = await this.prisma.claim.create({
       data: {
-        workerId: params.workerId,
+        workerId: worker.id,
         policyId: policy.id,
-        triggerType: params.triggerType,
+        triggerType: data.triggerType,
         triggerStart,
         triggerEnd: now,
-        hoursLost,
+        hoursLost: data.hoursLost,
         hourlyIncome,
         rawPayout,
-        finalPayout: fraudResult.passed ? finalPayout : 0,
+        finalPayout: isFlagged ? 0 : finalPayout,
         status,
-        fraudFlags: fraudResult.flags,
-        eventDate: now,
+        fraudFlags,
+        weatherVerified,
+        mlFraudScore,
+        eventDate: data.eventDate,
       },
     });
 
-    // If approved, create payment and update remaining limit
-    if (fraudResult.passed && finalPayout > 0) {
+    // Instant Payout Simulation (Phase 3)
+    if (!isFlagged && finalPayout > 0) {
+      this.logger.log(`>>> PAYOUT: Initiating Razorpay Sandbox payout of ₹${finalPayout} to worker: ${worker.name} (UPI)`);
+      
+      const razorpayTxId = `pay_mock_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       await this.prisma.payment.create({
         data: {
           claimId: claim.id,
           amount: finalPayout,
-          method: 'UPI_MOCK',
-          transactionId: `TXN_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          method: 'RAZORPAY_UPI_SANDBOX',
+          transactionId: razorpayTxId,
           status: 'SUCCESS',
         },
       });
 
+      // Update remaining limit
       await this.prisma.policy.update({
         where: { id: policy.id },
-        data: { remainingLimit: policy.remainingLimit - finalPayout },
+        data: { 
+          remainingLimit: policy.remainingLimit - finalPayout,
+          status: policy.remainingLimit - finalPayout <= 0 ? 'CLAIMED' : 'ACTIVE'
+        },
       });
 
       // Update claim to PAID
@@ -126,26 +177,40 @@ export class ClaimService {
         where: { id: claim.id },
         data: { status: 'PAID' },
       });
+
+      // Update worker stats: reset no-claim streak, increment total claims
+      await this.prisma.worker.update({
+        where: { id: worker.id },
+        data: {
+          noClaimStreak: 0,
+          totalClaims: { increment: 1 },
+        },
+      });
     }
 
-    // Record trigger event
-    await this.triggerService.recordTriggerEvent({
-      city: worker.city,
-      zone: worker.zone,
-      triggerType: params.triggerType,
-      triggerValue: params.triggerValue ?? (params.triggerType === 'RAIN' ? 25 : params.triggerType === 'AQI' ? 350 : params.triggerType === 'HEAT' ? 44 : 1),
-      thresholdValue: params.triggerType === 'RAIN' ? 20 : params.triggerType === 'AQI' ? 300 : params.triggerType === 'HEAT' ? 42 : 1,
-      startTime: triggerStart,
-      endTime: now,
-      dataSource: params.triggerType === 'ZONE_CLOSURE' ? 'MockAPI' : 'OpenWeatherMap',
-    });
+    return claim;
+  }
 
-    return {
-      claim: await this.prisma.claim.findUnique({
-        where: { id: claim.id },
-        include: { payment: true },
-      }),
-      fraudChecks: fraudResult,
-    };
+  /**
+   * Simulate a trigger for demo purposes (Legacy support)
+   */
+  async simulateTrigger(params: {
+    workerId: string;
+    triggerType: string;
+    hoursLost?: number;
+    triggerValue?: number;
+  }) {
+    const policy = await this.prisma.policy.findFirst({
+      where: { workerId: params.workerId, status: 'ACTIVE' },
+    });
+    if (!policy) throw new NotFoundException('No active policy found');
+
+    return this.createClaim({
+      policyId: policy.id,
+      triggerType: params.triggerType,
+      eventDate: new Date(),
+      hoursLost: params.hoursLost ?? 3.5,
+      triggerValue: params.triggerValue,
+    });
   }
 }

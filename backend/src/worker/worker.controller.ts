@@ -11,6 +11,16 @@ export class WorkerController {
     return this.workerService.create(dto);
   }
 
+  @Get('phone/:phone')
+  async findByPhone(@Param('phone') phone: string) {
+    return this.workerService.findByPhone(phone);
+  }
+
+  @Get('all')
+  async findAll() {
+    return this.workerService.findAll();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.workerService.findById(id);
