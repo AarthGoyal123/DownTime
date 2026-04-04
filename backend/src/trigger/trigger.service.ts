@@ -61,7 +61,7 @@ export class TriggerService {
       return;
     }
 
-    const uniqueZones = Array.from(new Set(activePolicies.map(p => `${p.worker.city}|${p.worker.zone}`)));
+    const uniqueZones: string[] = Array.from(new Set(activePolicies.map(p => `${p.worker.city}|${p.worker.zone}`)));
     const aiServiceUrl = this.config.get<string>('AI_SERVICE_URL', 'http://127.0.0.1:8000');
 
     for (const zoneKey of uniqueZones) {
