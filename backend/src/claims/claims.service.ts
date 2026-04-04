@@ -66,11 +66,67 @@ export class ClaimService {
     const triggerStart = new Date(now);
     triggerStart.setHours(triggerStart.getHours() - Math.ceil(data.hoursLost));
 
-    // Automated Fraud Check (Phase 3 logic)
-    // For parametric triggers, we auto-approve if the AI monitored the disruption.
-    const fraudResult = { passed: true, flags: [] };
+    // ─── REAL Fraud Detection (wired in Phase 3) ───
+    let fraudFlags: string[] = [];
+    let mlFraudScore: number | null = null;
+    let weatherVerified = false;
 
-    const status = fraudResult.passed ? 'APPROVED' : 'FLAGGED';
+    try {
+      // 1. Run rule-based fraud checks
+      const fraudResult = await this.fraudService.runAllChecks({
+        workerId: worker.id,
+        claimAmount: rawPayout,
+        triggerType: data.triggerType,
+        city: worker.city,
+        zone: worker.zone,
+        eventDate: data.eventDate,
+      });
+      fraudFlags = fraudResult.flags || [];
+
+      // 2. Cross-verify weather with AI service
+      try {
+        const axios = require('axios');
+        const weatherResp = await axios.get(`http://localhost:8000/weather/live/${worker.city}`);
+        const weather = weatherResp.data;
+        weatherVerified = weather.source === 'openweathermap_live';
+
+        // Verify the trigger matches actual weather conditions
+        if (data.triggerType === 'RAIN' && weather.rain_mm_hr < 5) {
+          fraudFlags.push('WEATHER_MISMATCH_RAIN');
+        }
+        if (data.triggerType === 'HEAT' && weather.temperature_c < 38) {
+          fraudFlags.push('WEATHER_MISMATCH_HEAT');
+        }
+        if (data.triggerType === 'AQI' && weather.aqi < 200) {
+          fraudFlags.push('WEATHER_MISMATCH_AQI');
+        }
+
+        // 3. ML anomaly detection
+        const mlFraudResp = await axios.post('http://localhost:8000/fraud/ml-evaluate', {
+          rain_mm_hr: weather.rain_mm_hr || 0,
+          temperature_c: weather.temperature_c || 30,
+          aqi: weather.aqi || 100,
+          wind_kmh: weather.wind_kmh || 10,
+          humidity_pct: weather.humidity_pct || 50,
+          daily_income: worker.dailyIncome,
+          working_hours: worker.workingHours,
+          experience_days: worker.experienceDays || 30,
+          no_claim_streak: worker.noClaimStreak || 0,
+          claims_30d: worker.totalClaims || 0,
+        });
+        mlFraudScore = mlFraudResp.data.anomaly_score;
+        if (mlFraudResp.data.is_anomaly) {
+          fraudFlags.push('ML_ANOMALY_DETECTED');
+        }
+      } catch (aiErr) {
+        this.logger.warn(`AI fraud check unavailable: ${aiErr.message}`);
+      }
+    } catch (fraudErr) {
+      this.logger.warn(`Fraud service error: ${fraudErr.message}, auto-approving parametric claim`);
+    }
+
+    const isFlagged = fraudFlags.length > 0;
+    const status = isFlagged ? 'FLAGGED' : 'APPROVED';
 
     // Create claim
     const claim = await this.prisma.claim.create({
@@ -83,15 +139,17 @@ export class ClaimService {
         hoursLost: data.hoursLost,
         hourlyIncome,
         rawPayout,
-        finalPayout: fraudResult.passed ? finalPayout : 0,
+        finalPayout: isFlagged ? 0 : finalPayout,
         status,
-        fraudFlags: fraudResult.flags,
+        fraudFlags,
+        weatherVerified,
+        mlFraudScore,
         eventDate: data.eventDate,
       },
     });
 
     // Instant Payout Simulation (Phase 3)
-    if (fraudResult.passed && finalPayout > 0) {
+    if (!isFlagged && finalPayout > 0) {
       this.logger.log(`>>> PAYOUT: Initiating Razorpay Sandbox payout of ₹${finalPayout} to worker: ${worker.name} (UPI)`);
       
       const razorpayTxId = `pay_mock_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -110,7 +168,6 @@ export class ClaimService {
         where: { id: policy.id },
         data: { 
           remainingLimit: policy.remainingLimit - finalPayout,
-          // If limit is reached, deactivate policy
           status: policy.remainingLimit - finalPayout <= 0 ? 'CLAIMED' : 'ACTIVE'
         },
       });
@@ -119,6 +176,15 @@ export class ClaimService {
       await this.prisma.claim.update({
         where: { id: claim.id },
         data: { status: 'PAID' },
+      });
+
+      // Update worker stats: reset no-claim streak, increment total claims
+      await this.prisma.worker.update({
+        where: { id: worker.id },
+        data: {
+          noClaimStreak: 0,
+          totalClaims: { increment: 1 },
+        },
       });
     }
 

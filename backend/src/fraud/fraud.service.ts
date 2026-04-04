@@ -108,17 +108,23 @@ export class FraudService {
     workerId: string;
     triggerType: string;
     eventDate: Date;
-    hoursLost: number;
-    payout: number;
-    coverageLimit: number;
+    hoursLost?: number;
+    payout?: number;
+    claimAmount?: number;
+    coverageLimit?: number;
+    city?: string;
+    zone?: string;
     workerLat?: number;
     workerLng?: number;
     zoneCenterLat?: number;
     zoneCenterLng?: number;
   }): Promise<{ passed: boolean; flags: string[] }> {
     const allFlags: string[] = [];
+    const payout = params.payout || params.claimAmount || 0;
+    const coverageLimit = params.coverageLimit || payout * 2;
+    const hoursLost = params.hoursLost || 3;
 
-    // Rule 1: Location validation (mock coords in Phase 1)
+    // Rule 1: Location validation (if GPS coords provided)
     if (params.workerLat && params.zoneCenterLat) {
       const locResult = this.validateLocation(
         params.workerLat,
@@ -140,9 +146,9 @@ export class FraudService {
     // Rule 3: Anomaly detection
     const anomalyResult = await this.checkAnomalies(
       params.workerId,
-      params.hoursLost,
-      params.payout,
-      params.coverageLimit,
+      hoursLost,
+      payout,
+      coverageLimit,
     );
     allFlags.push(...anomalyResult.flags);
 

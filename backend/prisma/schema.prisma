@@ -8,55 +8,62 @@ datasource db {
 }
 
 model Worker {
-  id           String   @id @default(cuid())
-  name         String
-  phone        String   @unique
-  city         String
-  zone         String
-  platform     String // "zepto" | "blinkit" | "zomato" etc.
-  dailyIncome  Float
-  workingHours Int      @default(8)
-  workStartHour Int     @default(9)
-  workEndHour  Int      @default(19)
-  createdAt    DateTime @default(now())
-  policies     Policy[]
-  claims       Claim[]
-}
-
-model Policy {
   id             String   @id @default(cuid())
-  workerId       String
-  worker         Worker   @relation(fields: [workerId], references: [id])
-  coveragePct    Float // 0.50 | 0.70 | 0.90
-  coverageLimit  Float // weekly_income x coverage_pct
-  weeklyPremium  Float
-  riskScore      Float
-  status         String   @default("ACTIVE") // "ACTIVE" | "EXPIRED" | "CANCELLED"
-  weekStartDate  DateTime
-  weekEndDate    DateTime
-  remainingLimit Float // starts equal to coverageLimit, decremented per payout
+  name           String
+  phone          String   @unique
+  city           String
+  zone           String
+  platform       String // "zepto" | "blinkit" | "zomato" etc.
+  dailyIncome    Float
+  workingHours   Int      @default(8)
+  workStartHour  Int      @default(9)
+  workEndHour    Int      @default(19)
+  experienceDays Int      @default(30)
+  noClaimStreak  Int      @default(0)
+  totalClaims    Int      @default(0)
   createdAt      DateTime @default(now())
+  policies       Policy[]
   claims         Claim[]
 }
 
+model Policy {
+  id              String   @id @default(cuid())
+  workerId        String
+  worker          Worker   @relation(fields: [workerId], references: [id])
+  coveragePct     Float // 0.50 | 0.70 | 0.90
+  coverageLimit   Float // weekly_income x coverage_pct
+  weeklyPremium   Float
+  mlPremium       Float?   // ML model predicted premium
+  discountApplied Float    @default(0) // no-claim discount %
+  riskScore       Float
+  status          String   @default("ACTIVE") // "ACTIVE" | "EXPIRED" | "CANCELLED"
+  weekStartDate   DateTime
+  weekEndDate     DateTime
+  remainingLimit  Float // starts equal to coverageLimit, decremented per payout
+  createdAt       DateTime @default(now())
+  claims          Claim[]
+}
+
 model Claim {
-  id           String   @id @default(cuid())
-  workerId     String
-  worker       Worker   @relation(fields: [workerId], references: [id])
-  policyId     String
-  policy       Policy   @relation(fields: [policyId], references: [id])
-  triggerType  String // "RAIN" | "AQI" | "HEAT" | "ZONE_CLOSURE"
-  triggerStart DateTime
-  triggerEnd   DateTime
-  hoursLost    Float
-  hourlyIncome Float
-  rawPayout    Float // before caps
-  finalPayout  Float // after caps
-  status       String   @default("PROCESSING") // "PROCESSING" | "APPROVED" | "PAID" | "FLAGGED" | "REJECTED"
-  fraudFlags   String[] @default([])
-  eventDate    DateTime
-  createdAt    DateTime @default(now())
-  payment      Payment?
+  id              String   @id @default(cuid())
+  workerId        String
+  worker          Worker   @relation(fields: [workerId], references: [id])
+  policyId        String
+  policy          Policy   @relation(fields: [policyId], references: [id])
+  triggerType     String // "RAIN" | "AQI" | "HEAT" | "ZONE_CLOSURE"
+  triggerStart    DateTime
+  triggerEnd      DateTime
+  hoursLost       Float
+  hourlyIncome    Float
+  rawPayout       Float // before caps
+  finalPayout     Float // after caps
+  status          String   @default("PROCESSING") // "PROCESSING" | "APPROVED" | "PAID" | "FLAGGED" | "REJECTED"
+  fraudFlags      String[] @default([])
+  weatherVerified Boolean  @default(false)
+  mlFraudScore    Float?   // Isolation Forest anomaly score
+  eventDate       DateTime
+  createdAt       DateTime @default(now())
+  payment         Payment?
 }
 
 model Payment {

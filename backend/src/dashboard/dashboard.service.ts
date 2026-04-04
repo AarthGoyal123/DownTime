@@ -142,4 +142,99 @@ export class DashboardService {
         : 0,
     };
   }
+
+  /**
+   * Fraud detection statistics for admin dashboard
+   */
+  async getFraudStats() {
+    const flaggedClaims = await this.prisma.claim.findMany({
+      where: { status: 'FLAGGED' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: { worker: true },
+    });
+
+    const totalFlagged = await this.prisma.claim.count({ where: { status: 'FLAGGED' } });
+    const totalApproved = await this.prisma.claim.count({ where: { status: { in: ['APPROVED', 'PAID'] } } });
+    const totalRejected = await this.prisma.claim.count({ where: { status: 'REJECTED' } });
+
+    // Flag distribution
+    const flagCounts: Record<string, number> = {};
+    flaggedClaims.forEach(c => {
+      (c.fraudFlags || []).forEach(flag => {
+        flagCounts[flag] = (flagCounts[flag] || 0) + 1;
+      });
+    });
+
+    return {
+      totalFlagged,
+      totalApproved,
+      totalRejected,
+      fraudRate: totalApproved + totalFlagged > 0
+        ? Math.round((totalFlagged / (totalApproved + totalFlagged)) * 100 * 100) / 100
+        : 0,
+      flagDistribution: flagCounts,
+      recentFlaggedClaims: flaggedClaims.map(c => ({
+        id: c.id,
+        workerName: (c.worker as any)?.name || 'Unknown',
+        triggerType: c.triggerType,
+        amount: c.rawPayout,
+        flags: c.fraudFlags,
+        date: c.createdAt,
+      })),
+    };
+  }
+
+  /**
+   * Trend data for charts (last 14 days)
+   */
+  async getTrendData() {
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const claims = await this.prisma.claim.findMany({
+      where: { createdAt: { gte: fourteenDaysAgo } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const policies = await this.prisma.policy.findMany({
+      where: { createdAt: { gte: fourteenDaysAgo } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Group by date
+    const dailyData: Record<string, { claims: number; payouts: number; premiums: number; flagged: number }> = {};
+
+    for (let i = 0; i < 14; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - (13 - i));
+      const key = d.toISOString().split('T')[0];
+      dailyData[key] = { claims: 0, payouts: 0, premiums: 0, flagged: 0 };
+    }
+
+    claims.forEach(c => {
+      const key = c.createdAt.toISOString().split('T')[0];
+      if (dailyData[key]) {
+        dailyData[key].claims++;
+        dailyData[key].payouts += c.finalPayout;
+        if (c.status === 'FLAGGED') dailyData[key].flagged++;
+      }
+    });
+
+    policies.forEach(p => {
+      const key = p.createdAt.toISOString().split('T')[0];
+      if (dailyData[key]) {
+        dailyData[key].premiums += p.weeklyPremium;
+      }
+    });
+
+    return {
+      daily: Object.entries(dailyData).map(([date, data]) => ({
+        date,
+        ...data,
+        payouts: Math.round(data.payouts * 100) / 100,
+        premiums: Math.round(data.premiums * 100) / 100,
+      })),
+    };
+  }
 }

@@ -36,4 +36,8 @@ export class WorkerService {
   async findAll() {
     return this.prisma.worker.findMany();
   }
+
+  async findByPhone(phone: string) {
+    return this.prisma.worker.findUnique({ where: { phone } });
+  }
 }

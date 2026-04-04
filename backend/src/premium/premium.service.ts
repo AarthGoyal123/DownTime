@@ -53,8 +53,12 @@ export class PremiumService {
     coveragePct: number;
     workingHours?: number;
     date?: string;
+    experienceDays?: number;
+    noClaimStreak?: number;
+    totalClaims?: number;
+    platform?: string;
   }): Promise<PremiumCalculation> {
-    // Get risk score from AI service
+    // Get risk score from AI service (heuristic)
     const risk = await this.riskService.calculateRisk({
       city: params.city,
       zone: params.zone,
@@ -66,29 +70,53 @@ export class PremiumService {
     const weeklyIncome = params.dailyIncome * 7;
     const coverageLimit = Math.round(weeklyIncome * params.coveragePct);
 
-    // Actuarial Premium Calculation
-    // Step 1: Base component
+    // ─── Try ML Model First ───
+    let mlPremium: number | null = null;
+    let mlModelUsed = false;
+    let mlFeatureImportances: Record<string, number> = {};
+    let mlModelConfidence = 0;
+
+    try {
+      const axios = require('axios');
+      const mlResp = await axios.post('http://localhost:8000/ml/predict-premium', {
+        city: params.city,
+        zone: params.zone,
+        daily_income: params.dailyIncome,
+        coverage_pct: params.coveragePct,
+        working_hours: params.workingHours ?? 8,
+        experience_days: params.experienceDays ?? 30,
+        no_claim_streak: params.noClaimStreak ?? 0,
+        claims_30d: params.totalClaims ?? 0,
+        platform: params.platform ?? 'zomato',
+      }, { timeout: 5000 });
+
+      if (mlResp.data?.weekly_premium) {
+        mlPremium = mlResp.data.weekly_premium;
+        mlModelUsed = true;
+        mlFeatureImportances = mlResp.data.feature_importances || {};
+        mlModelConfidence = mlResp.data.model_confidence || 0;
+      }
+    } catch (err) {
+      // ML service unavailable, fall back to heuristic
+    }
+
+    // ─── Heuristic Premium Calculation (fallback) ───
     const baseComponent = coverageLimit * BASE_RATE;
-
-    // Step 2: Risk multiplier (non-linear — higher risk = disproportionately higher premium)
     const riskMultiplier = 1 + Math.pow(risk.risk_score, 1.5) * 2.5;
-
-    // Step 3: Seasonal adjustment
     const month = new Date().getMonth() + 1;
     const seasonalAdjustment = SEASONAL_MULTIPLIER[month] ?? 1.0;
-
-    // Step 4: Coverage factor (higher coverage % = slightly higher rate)
     const coverageFactor = params.coveragePct <= 0.5 ? 0.90 : params.coveragePct <= 0.7 ? 1.0 : 1.15;
 
-    // Step 5: No-claim discount (simulated — in production, based on worker history)
-    const noclaimDiscount = 1.0; // 1.0 = no discount, 0.85 = 15% discount
+    // No-claim discount from worker history
+    const streak = params.noClaimStreak ?? 0;
+    const noclaimDiscount = Math.max(0.80, 1.0 - streak * 0.015); // Max 20% discount
 
-    // Final formula
-    let weeklyPremium = baseComponent * riskMultiplier * seasonalAdjustment * coverageFactor * noclaimDiscount;
+    let heuristicPremium = baseComponent * riskMultiplier * seasonalAdjustment * coverageFactor * noclaimDiscount;
+    heuristicPremium = Math.max(MIN_PREMIUM, Math.min(MAX_PREMIUM, heuristicPremium));
+    heuristicPremium = Math.round(heuristicPremium * 100) / 100;
 
-    // Enforce bounds
-    weeklyPremium = Math.max(MIN_PREMIUM, Math.min(MAX_PREMIUM, weeklyPremium));
-    weeklyPremium = Math.round(weeklyPremium * 100) / 100;
+    // Use ML premium if available, otherwise heuristic
+    const weeklyPremium = mlModelUsed ? mlPremium! : heuristicPremium;
 
     return {
       weeklyIncome,
@@ -115,9 +143,18 @@ export class PremiumService {
         riskMultiplier: Math.round(riskMultiplier * 100) / 100,
         seasonalAdjustment,
         coverageFactor,
-        noclaimDiscount,
+        noclaimDiscount: Math.round(noclaimDiscount * 100) / 100,
       },
-    };
+      ...(mlModelUsed ? {
+        mlPricing: {
+          mlPremium,
+          heuristicPremium,
+          mlModelUsed: true,
+          mlModelConfidence,
+          mlFeatureImportances,
+        },
+      } : {}),
+    } as any;
   }
 
   async calculateAllTiers(params: {
