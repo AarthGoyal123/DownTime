@@ -65,6 +65,11 @@ We've integrated a sophisticated multi-rule fraud pipeline out-of-the-box:
 *   [x] **Phase 3**: Integration of Razorpay Sandbox UPI payout simulation, advanced Insurer/Admin Dashboard (Loss Ratios, Predictive Claims next week), and cross-verification fraud flagging.
 *   [x] **Phase 4 (Infrastructure Polish)**: Network resilience! Migrated from standard TCP Postgres engines to Neon's WSS (WebSocket) Driver Adapter. This enables partners to run our entire stack locally over port 443, entirely bypassing ISP-level DPI and TCP port blocks (5432/26257). Also unified all environment variables to root for seamless mono-repo DX.
 
+### 5. SDLC, Security & Protection (Newly Integrated)
+* **Input Parsing:** Native NestJS `ValidationPipe` enabled globally with strict whitelist checking to sanitize all payloads.
+* **Basic Rate Limiting:** Integrated an in-memory IP tracker directly into the NestJS `main.ts` pipeline protecting against rapid-fire DDOS/brute-force attacks across all APIs.
+* **Architecture Integrity:** Environment separation enforced through `.env` configurations across all monorepo scopes.
+
 ---
 
 ## 🛠 Project Architecture
