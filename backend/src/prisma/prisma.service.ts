@@ -14,20 +14,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
-    // Load .env manually so DATABASE_URL is available
-    const envPaths = [
-      join(process.cwd(), '.env'),
-      join(__dirname, '..', '..', '.env'),
-      join(__dirname, '..', '..', '..', '.env'),
-    ];
-    for (const p of envPaths) {
-      if (existsSync(p)) {
-        dotenv.config({ path: p, override: true });
-        break;
-      }
-    }
-
     const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error('DATABASE_URL is not defined');
+    }
     const pool = new Pool({ connectionString });
     const adapter = new PrismaNeon(pool);
 
