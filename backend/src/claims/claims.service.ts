@@ -87,7 +87,8 @@ export class ClaimService {
       // 2. Cross-verify weather with AI service
       try {
         const axios = require('axios');
-        const weatherResp = await axios.get(`http://localhost:8000/weather/live/${worker.city}`);
+        const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+        const weatherResp = await axios.get(`${aiUrl}/weather/live/${worker.city}`);
         const weather = weatherResp.data;
         weatherVerified = weather.source === 'openweathermap_live';
 
@@ -103,7 +104,7 @@ export class ClaimService {
         }
 
         // 3. ML anomaly detection
-        const mlFraudResp = await axios.post('http://localhost:8000/fraud/ml-evaluate', {
+        const mlFraudResp = await axios.post(`${aiUrl}/fraud/ml-evaluate`, {
           rain_mm_hr: weather.rain_mm_hr || 0,
           temperature_c: weather.temperature_c || 30,
           aqi: weather.aqi || 100,

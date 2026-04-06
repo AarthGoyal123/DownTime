@@ -1,31 +1,7 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/next"
-    },
-    {
-      "src": "backend/package.json",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "ai-service/main.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "backend/api/index.ts"
-    },
-    {
-      "src": "/risk/(.*)",
-      "dest": "ai-service/main.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/frontend/$1"
-    }
-  ]
+  "comment": "This root vercel.json is intentionally minimal. Deploy each service separately from its own subdirectory.",
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/.next",
+  "framework": "nextjs",
+  "installCommand": "cd frontend && npm install"
 }

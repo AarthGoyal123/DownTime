@@ -337,7 +337,7 @@ export default function Home() {
     setLoading(true);
     try {
       await api.post("/api/policies", {
-        workerId: wid,
+        workerId: workerId,
         coveragePct: Number(coveragePct),
       });
       setView("success");
