@@ -78,7 +78,8 @@ export class PremiumService {
 
     try {
       const axios = require('axios');
-      const mlResp = await axios.post('http://localhost:8000/ml/predict-premium', {
+      const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+      const mlResp = await axios.post(`${aiUrl}/ml/predict-premium`, {
         city: params.city,
         zone: params.zone,
         daily_income: params.dailyIncome,

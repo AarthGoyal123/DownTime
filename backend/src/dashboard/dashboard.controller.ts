@@ -19,7 +19,8 @@ export class DashboardController {
   async getAdminPredictions(@Param('city') city: string) {
     try {
       const axios = require('axios');
-      const resp = await axios.get(`http://localhost:8000/weather/forecast/${city}`, { timeout: 8000 });
+      const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+      const resp = await axios.get(`${aiUrl}/weather/forecast/${city}`, { timeout: 8000 });
       return resp.data;
     } catch {
       return { source: 'unavailable', daily_forecasts: [] };
@@ -40,7 +41,8 @@ export class DashboardController {
   async getMLModelInfo() {
     try {
       const axios = require('axios');
-      const resp = await axios.get('http://localhost:8000/ml/model-info', { timeout: 5000 });
+      const aiUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+      const resp = await axios.get(`${aiUrl}/ml/model-info`, { timeout: 5000 });
       return resp.data;
     } catch {
       return { is_trained: false, error: 'ML service unavailable' };
