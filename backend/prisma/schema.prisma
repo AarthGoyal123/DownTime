@@ -4,28 +4,28 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model Worker {
-  id             String   @id @default(cuid())
-  name           String
-  phone          String   @unique
-  city           String
-  zone           String
-  platform       String // "zepto" | "blinkit" | "zomato" etc.
-  dailyIncome    Float
-  workingHours   Int      @default(8)
-  workStartHour  Int      @default(9)
-  workEndHour    Int      @default(19)
-  experienceDays Int      @default(30)
-  noClaimStreak  Int      @default(0)
-  totalClaims    Int      @default(0)
-  createdAt      DateTime @default(now())
-  policies       Policy[]
-  claims         Claim[]
+  id               String   @id @default(cuid())
+  stripeCustomerId String?  @unique
+  name             String
+  phone            String   @unique
+  city             String
+  zone             String
+  platform         String // "zepto" | "blinkit" | "zomato" etc.
+  dailyIncome      Float
+  workingHours     Int      @default(8)
+  workStartHour    Int      @default(9)
+  workEndHour      Int      @default(19)
+  experienceDays   Int      @default(30)
+  noClaimStreak    Int      @default(0)
+  totalClaims      Int      @default(0)
+  createdAt        DateTime @default(now())
+  policies         Policy[]
+  claims           Claim[]
 }
 
 model Policy {
@@ -38,10 +38,11 @@ model Policy {
   mlPremium       Float?   // ML model predicted premium
   discountApplied Float    @default(0) // no-claim discount %
   riskScore       Float
-  status          String   @default("ACTIVE") // "ACTIVE" | "EXPIRED" | "CANCELLED"
+  status          String   @default("PENDING_PAYMENT") // "ACTIVE" | "EXPIRED" | "CANCELLED" | "PENDING_PAYMENT"
   weekStartDate   DateTime
   weekEndDate     DateTime
   remainingLimit  Float // starts equal to coverageLimit, decremented per payout
+  stripeSessionId String?  @unique
   createdAt       DateTime @default(now())
   claims          Claim[]
 }
@@ -60,7 +61,7 @@ model Claim {
   rawPayout       Float // before caps
   finalPayout     Float // after caps
   status          String   @default("PROCESSING") // "PROCESSING" | "APPROVED" | "PAID" | "FLAGGED" | "REJECTED"
-  fraudFlags      String[] @default([])
+  fraudFlags      String   @default("[]") // Stored as JSON string for SQLite
   weatherVerified Boolean  @default(false)
   mlFraudScore    Float?   // Isolation Forest anomaly score
   eventDate       DateTime

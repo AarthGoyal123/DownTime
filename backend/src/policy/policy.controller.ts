@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Param, Body } from '@nestjs/common';
 import { PolicyService } from './policy.service';
 
 @Controller('api/policies')
@@ -18,5 +18,14 @@ export class PolicyController {
   @Get(':id')
   async getById(@Param('id') id: string) {
     return this.policyService.getPolicyById(id);
+  }
+
+  /**
+   * Called by frontend after returning from Stripe Checkout (?payment=success)
+   * Activates the policy if payment was completed
+   */
+  @Patch(':id/activate')
+  async activate(@Param('id') policyId: string) {
+    return this.policyService.activatePolicy(policyId, 'manual-confirm');
   }
 }

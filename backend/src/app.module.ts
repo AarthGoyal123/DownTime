@@ -13,6 +13,7 @@ import { FraudModule } from './fraud/fraud.module';
 import { TriggerModule } from './trigger/trigger.module';
 import { ClaimsModule } from './claims/claims.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { StripeModule } from './stripe/stripe.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     TriggerModule,
     ClaimsModule,
     DashboardModule,
+    StripeModule,
   ],
   controllers: [AppController],
   providers: [AppService],
