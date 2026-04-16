@@ -181,6 +181,14 @@ export default function Home() {
   const [zone, setZone] = useState("Kondapur");
   const [coveragePct, setCoveragePct] = useState("0.70");
   const [workerId, setWorkerId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<"WORKER" | "ADMIN" | "COMPANY">("WORKER");
+  const [loginMode, setLoginMode] = useState<"WORKER" | "ADMIN">("WORKER");
+  
+  // Profile editing
+  const [isEditing, setIsEditing] = useState(false);
+  const [editCity, setEditCity] = useState("");
+  const [editZone, setEditZone] = useState("");
+  const [editIncome, setEditIncome] = useState([700]);
 
   const [loading, setLoading] = useState(false);
   const [premiumData, setPremiumData] = useState<PremiumResponse | null>(null);
@@ -204,29 +212,12 @@ export default function Home() {
   // Check saved worker on mount and handle payment status
   useEffect(() => {
     const saved = localStorage.getItem("downtime_worker_id");
+    const role = localStorage.getItem("downtime_role");
     if (saved) {
       setWorkerId(saved);
-      
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("payment") === "success") {
-        const policyId = params.get("id");
-        // Activate the policy immediately (fallback if webhook is delayed)
-        if (policyId) {
-          api.patch(`/api/policies/${policyId}/activate`)
-            .catch(() => {}) // Silently ignore if already activated by webhook
-            .finally(() => {
-              // Clean up URL and show dashboard with active coverage
-              window.history.replaceState({}, '', '/');
-              setView("dashboard");
-            });
-        } else {
-          window.history.replaceState({}, '', '/');
-          setView("dashboard");
-        }
-      } else if (params.get("payment") === "cancelled") {
-        window.history.replaceState({}, '', '/');
-        setView("quote");
-        setTimeout(() => alert("Payment was cancelled. Coverage is not active yet."), 100);
+      setUserRole((role as any) || "WORKER");
+      if (role === 'ADMIN' || role === 'COMPANY') {
+        setView("admin");
       } else {
         setView("quote");
       }
@@ -278,13 +269,60 @@ export default function Home() {
 
   const handleSignOut = () => {
     localStorage.removeItem("downtime_worker_id");
+    localStorage.removeItem("downtime_role");
     setWorkerId(null);
+    setUserRole("WORKER");
     setDashboardData(null);
     setPremiumData(null);
     setAdminData(null);
     setRegName("");
     setRegPhone("");
     setView("register");
+  };
+
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+
+  const handleAdminLogin = async () => {
+    if (!adminEmail || !adminPassword) return;
+    setLoading(true);
+    try {
+      const resp = await api.post("/api/auth/login", {
+        email: adminEmail,
+        password: adminPassword,
+      });
+      const user = resp.data;
+      setWorkerId(user.id);
+      setUserRole(user.role);
+      localStorage.setItem("downtime_worker_id", user.id);
+      localStorage.setItem("downtime_role", user.role);
+      setView("admin");
+    } catch (err) {
+      alert("Admin login failed. Invalid credentials.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!workerId) return;
+    setLoading(true);
+    try {
+      await api.patch(`/api/workers/${workerId}`, {
+        city: editCity,
+        zone: editZone,
+        dailyIncome: editIncome[0]
+      });
+      setIsEditing(false);
+      await fetchDashboard();
+      setCity(editCity);
+      setZone(editZone);
+      setDailyIncome(editIncome);
+    } catch (err) {
+      alert("Failed to update profile.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Fetch premium calculation
@@ -323,15 +361,16 @@ export default function Home() {
       const fetchAll = async () => {
         setLoading(true);
         try {
+          const endpoint = userRole === 'COMPANY' ? `/api/dashboard/company/${workerId}` : "/api/dashboard/admin";
           const [adminResp, trendResp, fraudResp] = await Promise.all([
-            api.get("/api/dashboard/admin"),
+            api.get(endpoint),
             api.get("/api/dashboard/admin/trends").catch(() => ({ data: { daily: [] } })),
             api.get("/api/dashboard/admin/fraud-stats").catch(() => ({ data: null })),
           ]);
           setAdminData(adminResp.data);
           setTrendData(trendResp.data?.daily || []);
           setFraudStats(fraudResp.data);
-        } catch (err) { console.error("Failed to fetch admin dashboard", err); }
+        } catch (err) { console.error("Failed to fetch dashboard data", err); }
         finally { setLoading(false); }
       };
       fetchAll();
@@ -413,14 +452,16 @@ export default function Home() {
         >
           <User className="w-4 h-4" /> <span className="hidden sm:inline">Profile</span>
         </Button>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className={`rounded-full gap-2 transition-all ${view === 'admin' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'text-indigo-300/60 hover:text-indigo-300'}`}
-          onClick={() => setView("admin")}
-        >
-          <Shield className="w-4 h-4" /> <span className="hidden sm:inline">Admin</span>
-        </Button>
+        {(userRole === 'ADMIN' || userRole === 'COMPANY' || view === 'admin') && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className={`rounded-full gap-2 transition-all ${view === 'admin' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'text-indigo-300/60 hover:text-indigo-300'}`}
+            onClick={() => setView("admin")}
+          >
+            <Shield className="w-4 h-4" /> <span className="hidden sm:inline">Admin</span>
+          </Button>
+        )}
       </div>
     </nav>
   );
@@ -488,54 +529,118 @@ export default function Home() {
             <p className="text-slate-400 text-lg">AI-powered income protection for gig workers</p>
             <p className="text-xs text-slate-500 mt-2">{Object.keys(CITIES).length} cities • 10+ risk factors • Instant payouts</p>
           </div>
+
+          <div className="flex gap-2 p-1 bg-white/5 rounded-2xl mb-6 backdrop-blur-xl border border-white/10 max-w-[280px] mx-auto">
+            <button 
+              className={`flex-1 py-2 px-4 rounded-xl text-sm font-bold transition-all ${loginMode === 'WORKER' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => setLoginMode('WORKER')}
+            >
+              Worker
+            </button>
+            <button 
+              className={`flex-1 py-2 px-4 rounded-xl text-sm font-bold transition-all ${loginMode === 'ADMIN' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => setLoginMode('ADMIN')}
+            >
+              Company
+            </button>
+          </div>
+
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl shadow-2xl space-y-6">
-            <div className="space-y-2">
-              <Label className="text-sm text-slate-300 flex items-center gap-2"><UserPlus className="w-4 h-4" /> Full Name</Label>
-              <input value={regName} onChange={e => setRegName(e.target.value)} placeholder="Rajesh Kumar" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none transition-all" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm text-slate-300 flex items-center gap-2"><Phone className="w-4 h-4" /> Phone Number</Label>
-              <input value={regPhone} onChange={e => setRegPhone(e.target.value)} placeholder="+91 98765 43210" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none transition-all" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-sm text-slate-300 flex items-center gap-2"><MapPin className="w-4 h-4" /> City</Label>
-                <Select value={regCity} onValueChange={setRegCity}>
-                  <SelectTrigger className="bg-black/40 border-white/10 h-12 rounded-xl"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-white/10 max-h-60">
-                    {Object.keys(CITIES).map(c => (<SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-sm text-slate-300">Zone</Label>
-                <Select value={regZone} onValueChange={setRegZone}>
-                  <SelectTrigger className="bg-black/40 border-white/10 h-12 rounded-xl"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-white/10">
-                    {(CITIES[regCity as keyof typeof CITIES] || []).map(z => (<SelectItem key={z} value={z}>{z}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm text-slate-300 flex items-center gap-2"><Briefcase className="w-4 h-4" /> Platform</Label>
-              <Select value={regPlatform} onValueChange={setRegPlatform}>
-                <SelectTrigger className="bg-black/40 border-white/10 h-12 rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-white/10">
-                  {["zomato", "swiggy", "zepto", "amazon", "dunzo", "blinkit", "bigbasket", "flipkart"].map(p => (
-                    <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between"><Label className="text-sm text-slate-300 flex items-center gap-2"><IndianRupee className="w-4 h-4" /> Daily Income</Label><span className="text-indigo-300 font-bold">₹{regIncome[0]}</span></div>
-              <Slider value={regIncome} onValueChange={setRegIncome} min={200} max={2000} step={50} />
-            </div>
-            <Button className="w-full py-6 rounded-2xl text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)] transition-all hover:scale-[1.02]" onClick={handleRegister} disabled={loading || !regName || !regPhone}>
-              {loading ? <span className="flex items-center gap-2"><span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />Creating Account...</span> : <span className="flex items-center gap-2"><UserPlus className="w-5 h-5" /> Join DownTime <ChevronRight className="w-5 h-5" /></span>}
-            </Button>
-            <p className="text-center text-xs text-slate-500">Already registered? Enter your phone to log in.</p>
+            {loginMode === 'WORKER' ? (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm text-slate-300 flex items-center gap-2"><UserPlus className="w-4 h-4" /> Full Name</Label>
+                  <input value={regName} onChange={e => setRegName(e.target.value)} placeholder="Rajesh Kumar" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none transition-all" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm text-slate-300 flex items-center gap-2"><Phone className="w-4 h-4" /> Phone Number</Label>
+                  <input value={regPhone} onChange={e => setRegPhone(e.target.value)} placeholder="+91 98765 43210" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none transition-all" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm text-slate-300 flex items-center gap-2"><MapPin className="w-4 h-4" /> City</Label>
+                    <Select value={regCity} onValueChange={setRegCity}>
+                      <SelectTrigger className="bg-black/40 border-white/10 h-12 rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-white/10 max-h-60">
+                        {Object.keys(CITIES).map(c => (<SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm text-slate-300">Zone</Label>
+                    <Select value={regZone} onValueChange={setRegZone}>
+                      <SelectTrigger className="bg-black/40 border-white/10 h-12 rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-white/10">
+                        {(CITIES[regCity as keyof typeof CITIES] || []).map(z => (<SelectItem key={z} value={z}>{z}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm text-slate-300 flex items-center gap-2"><Briefcase className="w-4 h-4" /> Platform</Label>
+                  <Select value={regPlatform} onValueChange={setRegPlatform}>
+                    <SelectTrigger className="bg-black/40 border-white/10 h-12 rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-white/10">
+                      {["zomato", "swiggy", "zepto", "amazon", "dunzo", "blinkit", "bigbasket", "flipkart"].map(p => (
+                        <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between"><Label className="text-sm text-slate-300 flex items-center gap-2"><IndianRupee className="w-4 h-4" /> Daily Income</Label><span className="text-indigo-300 font-bold">₹{regIncome[0]}</span></div>
+                  <Slider value={regIncome} onValueChange={setRegIncome} min={200} max={2000} step={50} />
+                </div>
+                <Button className="w-full py-6 rounded-2xl text-lg font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)] transition-all hover:scale-[1.02]" onClick={handleRegister} disabled={loading || !regName || !regPhone}>
+                  {loading ? <span className="flex items-center gap-2"><span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />Creating Account...</span> : <span className="flex items-center gap-2"><UserPlus className="w-5 h-5" /> Join DownTime <ChevronRight className="w-5 h-5" /></span>}
+                </Button>
+                <p className="text-center text-xs text-slate-500">Already registered? Enter your phone to log in.</p>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-sm text-slate-300 flex items-center gap-2"><User className="w-4 h-4" /> Email Address</Label>
+                  <input 
+                    type="email"
+                    value={adminEmail} 
+                    onChange={e => setAdminEmail(e.target.value)} 
+                    placeholder="manager@zomato.com" 
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none transition-all" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm text-slate-300 flex items-center gap-2"><Shield className="w-4 h-4" /> Password</Label>
+                  <input 
+                    type="password"
+                    value={adminPassword} 
+                    onChange={e => setAdminPassword(e.target.value)} 
+                    placeholder="••••••••" 
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none transition-all" 
+                  />
+                </div>
+                <Button 
+                  className="w-full py-6 rounded-2xl text-lg font-bold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)] transition-all hover:scale-[1.02]" 
+                  onClick={handleAdminLogin} 
+                  disabled={loading || !adminEmail || !adminPassword}
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                      Authenticating...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <Shield className="w-5 h-5" /> Admin Portal <ChevronRight className="w-5 h-5" />
+                    </span>
+                  )}
+                </Button>
+                <div className="p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/10">
+                  <p className="text-[10px] text-indigo-300/60 leading-relaxed text-center">
+                    Restricted Access: This portal is for partner platform managers and risk officers only. Use your corporate credentials to access the fleet monitoring dashboard.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -754,30 +859,89 @@ export default function Home() {
         </header>
 
         <div className="max-w-2xl mx-auto space-y-6">
-          <div className="bg-white/5 border border-white/10 p-8 rounded-3xl flex items-center gap-8">
-            <div className="w-24 h-24 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full flex items-center justify-center text-4xl font-bold shadow-lg shadow-indigo-500/20 animate-float">
-              {dashboardData?.worker.name.charAt(0)}
+          <div className="bg-white/5 border border-white/10 p-8 rounded-3xl flex items-center justify-between gap-8">
+            <div className="flex items-center gap-8">
+              <div className="w-24 h-24 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-full flex items-center justify-center text-4xl font-bold shadow-lg shadow-indigo-500/20 animate-float">
+                {dashboardData?.worker.name.charAt(0)}
+              </div>
+              <div>
+                <h2 className="text-3xl font-bold mb-1">{dashboardData?.worker.name || "Loading..."}</h2>
+                <p className="text-indigo-400 font-medium">{dashboardData?.worker.platform.toUpperCase()} Partner</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-3xl font-bold mb-1">{dashboardData?.worker.name || "Loading..."}</h2>
-              <p className="text-indigo-400 font-medium">{dashboardData?.worker.platform.toUpperCase()} Partner</p>
-            </div>
+            {!isEditing && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="border-white/10 hover:bg-white/5 text-slate-300 gap-2"
+                onClick={() => {
+                  setEditCity(dashboardData?.worker.city || "");
+                  setEditZone(dashboardData?.worker.zone || "");
+                  setEditIncome([dashboardData?.worker.dailyIncome || 700]);
+                  setIsEditing(true);
+                }}
+              >
+                <Activity className="w-4 h-4" /> Edit Profile
+              </Button>
+            )}
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
-            {[
-              { label: "Phone Number", val: dashboardData?.worker.phone, icon: Activity },
-              { label: "Operating City", val: dashboardData?.worker.city, icon: MapPin },
-              { label: "Base Zone", val: dashboardData?.worker.zone, icon: MapPin },
-              { label: "Daily Income", val: `₹${dashboardData?.worker.dailyIncome}`, icon: IndianRupee },
-            ].map((item, i) => (
-              <div key={i} className="bg-white/5 border border-white/10 p-5 rounded-2xl hover:bg-white/[0.07] transition-all">
-                <p className="text-xs text-slate-500 font-bold uppercase mb-2 flex items-center gap-1.5">
-                  <item.icon className="w-3 h-3" /> {item.label}
-                </p>
-                <p className="text-lg font-medium text-white">{item.val || "---"}</p>
-              </div>
-            ))}
+            {isEditing ? (
+              <>
+                <div className="bg-white/5 border border-indigo-500/30 p-5 rounded-2xl col-span-2 space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs text-slate-400 font-bold uppercase">Operating City</Label>
+                      <Select value={editCity} onValueChange={setEditCity}>
+                        <SelectTrigger className="bg-black/40 border-white/10 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-white/10">
+                          {Object.keys(CITIES).map(c => (<SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-slate-400 font-bold uppercase">Base Zone</Label>
+                      <Select value={editZone} onValueChange={setEditZone}>
+                        <SelectTrigger className="bg-black/40 border-white/10 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-white/10">
+                          {(CITIES[editCity as keyof typeof CITIES] || []).map(z => (<SelectItem key={z} value={z}>{z}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex justify-between">
+                      <Label className="text-xs text-slate-400 font-bold uppercase">Daily Income Goal</Label>
+                      <span className="text-indigo-300 font-bold">₹{editIncome[0]}</span>
+                    </div>
+                    <Slider value={editIncome} onValueChange={setEditIncome} min={200} max={2000} step={50} />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <Button className="flex-1 bg-indigo-600 hover:bg-indigo-500 h-11 rounded-xl" onClick={handleUpdateProfile} disabled={loading}>
+                      {loading ? "Saving..." : "Save Changes"}
+                    </Button>
+                    <Button variant="ghost" className="flex-1 border border-white/10 hover:bg-white/5 h-11 rounded-xl" onClick={() => setIsEditing(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              [
+                { label: "Phone Number", val: dashboardData?.worker.phone, icon: Activity },
+                { label: "Operating City", val: dashboardData?.worker.city, icon: MapPin },
+                { label: "Base Zone", val: dashboardData?.worker.zone, icon: MapPin },
+                { label: "Daily Income", val: `₹${dashboardData?.worker.dailyIncome}`, icon: IndianRupee },
+              ].map((item, i) => (
+                <div key={i} className="bg-white/5 border border-white/10 p-5 rounded-2xl hover:bg-white/[0.07] transition-all">
+                  <p className="text-xs text-slate-500 font-bold uppercase mb-2 flex items-center gap-1.5">
+                    <item.icon className="w-3 h-3" /> {item.label}
+                  </p>
+                  <p className="text-lg font-medium text-white">{item.val || "---"}</p>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="pt-8 flex justify-center">
@@ -863,22 +1027,37 @@ export default function Home() {
                   Recent Fraud Checks (Phase 3)
                 </h2>
                 <div className="space-y-4">
-                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl relative overflow-hidden">
-                    <span className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-bl-lg">FLAGGED</span>
-                    <p className="text-white text-sm font-bold mb-1">Claim #CLM-9281</p>
-                    <p className="text-slate-400 text-xs">Worker ID: user-seed-123</p>
-                    <div className="mt-3 text-xs text-red-300 bg-red-500/10 rounded-lg p-2 font-mono">
-                      Reason: GPS Spoofing Detected (Too fast travel between zones)
-                    </div>
-                  </div>
-                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl relative overflow-hidden">
-                    <span className="absolute top-0 right-0 px-3 py-1 bg-green-500 text-white text-[10px] font-bold rounded-bl-lg">CLEARED</span>
-                    <p className="text-white text-sm font-bold mb-1">Claim #CLM-9282</p>
-                    <p className="text-slate-400 text-xs">Location: Hyderabad, Kondapur</p>
-                    <div className="mt-3 text-xs text-green-300 bg-green-500/10 rounded-lg p-2 font-mono">
-                      Validation: External Weather API matched API payload.
-                    </div>
-                  </div>
+                  {fraudStats?.recentFlaggedClaims?.length > 0 ? (
+                    fraudStats.recentFlaggedClaims.map((claim: any, i: number) => (
+                      <div key={i} className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl relative overflow-hidden">
+                        <span className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-bl-lg">FLAGGED</span>
+                        <p className="text-white text-sm font-bold mb-1">Claim #{claim.id.substring(0,8).toUpperCase()}</p>
+                        <p className="text-slate-400 text-xs">Worker: {claim.workerName}</p>
+                        <div className="mt-3 text-xs text-red-300 bg-red-500/10 rounded-lg p-2 font-mono">
+                          Reason: {claim.flags?.join(", ") || "Suspicious Activity"}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl relative overflow-hidden">
+                        <span className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-bl-lg">FLAGGED</span>
+                        <p className="text-white text-sm font-bold mb-1">Claim #CLM-9281</p>
+                        <p className="text-slate-400 text-xs">Worker ID: user-seed-123</p>
+                        <div className="mt-3 text-xs text-red-300 bg-red-500/10 rounded-lg p-2 font-mono">
+                          Reason: GPS Spoofing Detected (Too fast travel between zones)
+                        </div>
+                      </div>
+                      <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl relative overflow-hidden">
+                        <span className="absolute top-0 right-0 px-3 py-1 bg-green-500 text-white text-[10px] font-bold rounded-bl-lg">CLEARED</span>
+                        <p className="text-white text-sm font-bold mb-1">Claim #CLM-9282</p>
+                        <p className="text-slate-400 text-xs">Location: Hyderabad, Kondapur</p>
+                        <div className="mt-3 text-xs text-green-300 bg-green-500/10 rounded-lg p-2 font-mono">
+                          Validation: External Weather API matched API payload.
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

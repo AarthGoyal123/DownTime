@@ -15,6 +15,8 @@ import { ClaimsModule } from './claims/claims.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { StripeModule } from './stripe/stripe.module';
 
+import { AuthModule } from './auth/auth.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ 
@@ -32,7 +34,7 @@ import { StripeModule } from './stripe/stripe.module';
     TriggerModule,
     ClaimsModule,
     DashboardModule,
-    StripeModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
