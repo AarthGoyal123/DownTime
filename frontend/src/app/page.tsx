@@ -215,7 +215,7 @@ export default function Home() {
     const role = localStorage.getItem("downtime_role");
     if (saved) {
       setWorkerId(saved);
-      setUserRole((role as any) || "WORKER");
+      setUserRole((role as "WORKER" | "ADMIN" | "COMPANY") || "WORKER");
       if (role === 'ADMIN' || role === 'COMPANY') {
         setView("admin");
       } else {
@@ -298,6 +298,7 @@ export default function Home() {
       localStorage.setItem("downtime_role", user.role);
       setView("admin");
     } catch (err) {
+      console.error("Login Error:", err);
       alert("Admin login failed. Invalid credentials.");
     } finally {
       setLoading(false);
@@ -319,6 +320,7 @@ export default function Home() {
       setZone(editZone);
       setDailyIncome(editIncome);
     } catch (err) {
+      console.error("Update Profile Error:", err);
       alert("Failed to update profile.");
     } finally {
       setLoading(false);
@@ -1028,7 +1030,7 @@ export default function Home() {
                 </h2>
                 <div className="space-y-4">
                   {fraudStats?.recentFlaggedClaims?.length > 0 ? (
-                    fraudStats.recentFlaggedClaims.map((claim: any, i: number) => (
+                    fraudStats.recentFlaggedClaims.map((claim: { id: string; workerName: string; flags?: string[] }, i: number) => (
                       <div key={i} className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl relative overflow-hidden">
                         <span className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-bl-lg">FLAGGED</span>
                         <p className="text-white text-sm font-bold mb-1">Claim #{claim.id.substring(0,8).toUpperCase()}</p>
