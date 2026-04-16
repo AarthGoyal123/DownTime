@@ -834,22 +834,37 @@ export default function Home() {
                   Recent Fraud Checks (Phase 3)
                 </h2>
                 <div className="space-y-4">
-                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl relative overflow-hidden">
-                    <span className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-bl-lg">FLAGGED</span>
-                    <p className="text-white text-sm font-bold mb-1">Claim #CLM-9281</p>
-                    <p className="text-slate-400 text-xs">Worker ID: user-seed-123</p>
-                    <div className="mt-3 text-xs text-red-300 bg-red-500/10 rounded-lg p-2 font-mono">
-                      Reason: GPS Spoofing Detected (Too fast travel between zones)
-                    </div>
-                  </div>
-                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl relative overflow-hidden">
-                    <span className="absolute top-0 right-0 px-3 py-1 bg-green-500 text-white text-[10px] font-bold rounded-bl-lg">CLEARED</span>
-                    <p className="text-white text-sm font-bold mb-1">Claim #CLM-9282</p>
-                    <p className="text-slate-400 text-xs">Location: Hyderabad, Kondapur</p>
-                    <div className="mt-3 text-xs text-green-300 bg-green-500/10 rounded-lg p-2 font-mono">
-                      Validation: External Weather API matched API payload.
-                    </div>
-                  </div>
+                  {fraudStats?.recentFlaggedClaims?.length > 0 ? (
+                    fraudStats.recentFlaggedClaims.map((claim: any, i: number) => (
+                      <div key={i} className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl relative overflow-hidden">
+                        <span className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-bl-lg">FLAGGED</span>
+                        <p className="text-white text-sm font-bold mb-1">Claim #{claim.id.substring(0,8).toUpperCase()}</p>
+                        <p className="text-slate-400 text-xs">Worker: {claim.workerName}</p>
+                        <div className="mt-3 text-xs text-red-300 bg-red-500/10 rounded-lg p-2 font-mono">
+                          Reason: {claim.flags?.join(", ") || "Suspicious Activity"}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <>
+                      <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl relative overflow-hidden">
+                        <span className="absolute top-0 right-0 px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-bl-lg">FLAGGED</span>
+                        <p className="text-white text-sm font-bold mb-1">Claim #CLM-9281</p>
+                        <p className="text-slate-400 text-xs">Worker ID: user-seed-123</p>
+                        <div className="mt-3 text-xs text-red-300 bg-red-500/10 rounded-lg p-2 font-mono">
+                          Reason: GPS Spoofing Detected (Too fast travel between zones)
+                        </div>
+                      </div>
+                      <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl relative overflow-hidden">
+                        <span className="absolute top-0 right-0 px-3 py-1 bg-green-500 text-white text-[10px] font-bold rounded-bl-lg">CLEARED</span>
+                        <p className="text-white text-sm font-bold mb-1">Claim #CLM-9282</p>
+                        <p className="text-slate-400 text-xs">Location: Hyderabad, Kondapur</p>
+                        <div className="mt-3 text-xs text-green-300 bg-green-500/10 rounded-lg p-2 font-mono">
+                          Validation: External Weather API matched API payload.
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
