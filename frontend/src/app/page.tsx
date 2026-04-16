@@ -209,7 +209,7 @@ export default function Home() {
   const [regPlatform, setRegPlatform] = useState("zomato");
   const [regIncome, setRegIncome] = useState([700]);
 
-  // Check saved worker on mount
+  // Check saved worker on mount and handle payment status
   useEffect(() => {
     const saved = localStorage.getItem("downtime_worker_id");
     const role = localStorage.getItem("downtime_role");
@@ -398,11 +398,17 @@ export default function Home() {
   const handlePurchase = async () => {
     setLoading(true);
     try {
-      await api.post("/api/policies", {
+      const response = await api.post("/api/policies", {
         workerId: workerId,
         coveragePct: Number(coveragePct),
       });
-      setView("success");
+      
+      if (response.data.checkoutUrl) {
+        // Redirect to Stripe Hosted Checkout
+        window.location.href = response.data.checkoutUrl;
+      } else {
+        setView("success");
+      }
     } catch (err) {
       console.error("Failed to purchase policy", err);
       alert("Failed to activate policy. Please make sure the backend is running.");
@@ -1263,27 +1269,54 @@ export default function Home() {
 
             {renderRiskBreakdown()}
 
-            <Button 
-              className={`w-full py-7 rounded-2xl text-lg font-bold transition-all relative z-10 ${
-                loading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.02] shadow-[0_0_40px_-10px_rgba(99,102,241,0.5)]'
-              } bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-none`}
-              disabled={loading || !premiumData}
-              onClick={handlePurchase}
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
-                  Finalizing Coverage...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  Activate DownTime <ChevronRight className="w-5 h-5 ml-1" />
-                </span>
-              )}
-            </Button>
-            <p className="text-center text-[10px] text-slate-500 mt-4 relative z-10 flex items-center justify-center gap-1">
-              <Shield className="w-3 h-3 opacity-50" /> 10+ Sensors • Zero Claims • Instant Payouts
-            </p>
+
+            {/* Stripe Payment Button */}
+            <div className="relative z-10 mt-2">
+              <Button
+                className={`w-full py-7 rounded-2xl text-lg font-bold transition-all relative ${
+                  loading ? 'opacity-70 cursor-not-allowed' : 'hover:scale-[1.02] shadow-[0_0_50px_-10px_rgba(99,102,241,0.6)]'
+                } bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-700 hover:from-indigo-500 hover:via-blue-500 hover:to-indigo-600 text-white border-none`}
+                disabled={loading || !premiumData}
+                onClick={handlePurchase}
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-3">
+                    <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                    Redirecting to Stripe...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-3">
+                    {/* Stripe Lock Icon */}
+                    <svg className="w-5 h-5 opacity-90" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                    </svg>
+                    <span>Pay ₹{premiumData ? Math.round(premiumData.weeklyPremium) : '—'} securely with Stripe</span>
+                    <ChevronRight className="w-5 h-5" />
+                  </span>
+                )}
+              </Button>
+
+              {/* Stripe Trust Badge */}
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+                  <svg className="w-3.5 h-3.5 text-[#635BFF]" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/>
+                  </svg>
+                  <span className="text-[11px] text-slate-400 font-medium">Powered by Stripe</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-green-400" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  </svg>
+                  <span className="text-[11px] text-slate-400">256-bit SSL encrypted</span>
+                </div>
+              </div>
+
+              <p className="text-center text-[10px] text-slate-500 mt-3 flex items-center justify-center gap-1">
+                <Shield className="w-3 h-3 opacity-50" /> 7-day coverage • Instant payout on trigger • Cancel anytime
+              </p>
+            </div>
+
           </div>
         </div>
       </div>

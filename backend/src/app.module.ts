@@ -13,6 +13,7 @@ import { FraudModule } from './fraud/fraud.module';
 import { TriggerModule } from './trigger/trigger.module';
 import { ClaimsModule } from './claims/claims.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { StripeModule } from './stripe/stripe.module';
 
 import { AuthModule } from './auth/auth.module';
 

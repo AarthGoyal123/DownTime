@@ -54,8 +54,8 @@ export class DashboardService {
     if (worker) {
       const latestEvent = await this.prisma.triggerEvent.findFirst({
         where: {
-          city: { equals: worker.city, mode: 'insensitive' },
-          zone: { equals: worker.zone, mode: 'insensitive' },
+          city: worker.city,
+          zone: worker.zone,
           isActive: true,
           createdAt: { gte: oneDayAgo },
         },
@@ -217,7 +217,8 @@ export class DashboardService {
     // Flag distribution
     const flagCounts: Record<string, number> = {};
     flaggedClaims.forEach(c => {
-      (c.fraudFlags || []).forEach(flag => {
+      const flags: string[] = JSON.parse(c.fraudFlags || '[]');
+      flags.forEach(flag => {
         flagCounts[flag] = (flagCounts[flag] || 0) + 1;
       });
     });
@@ -235,7 +236,7 @@ export class DashboardService {
         workerName: (c.worker as any)?.name || 'Unknown',
         triggerType: c.triggerType,
         amount: c.rawPayout,
-        flags: c.fraudFlags,
+        flags: JSON.parse(c.fraudFlags || '[]'),
         date: c.createdAt,
       })),
     };

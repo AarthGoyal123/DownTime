@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PremiumService } from '../premium/premium.service';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
+import { StripeService } from '../stripe/stripe.service';
 
 @Injectable()
 export class PolicyService {
@@ -10,6 +11,8 @@ export class PolicyService {
   constructor(
     private prisma: PrismaService,
     private premiumService: PremiumService,
+    @Inject(forwardRef(() => StripeService))
+    private stripeService: StripeService,
   ) {}
 
   async createPolicy(params: { workerId: string; coveragePct: number }) {
@@ -35,32 +38,72 @@ export class PolicyService {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
 
-    return this.prisma.policy.create({
+    // Create policy in PENDING_PAYMENT state
+    const policy = await this.prisma.policy.create({
       data: {
         workerId: params.workerId,
         coveragePct: params.coveragePct,
         coverageLimit: premium.coverageLimit,
         weeklyPremium: premium.weeklyPremium,
         riskScore: premium.riskScore,
-        status: 'ACTIVE',
+        status: 'PENDING_PAYMENT',
         weekStartDate: weekStart,
         weekEndDate: weekEnd,
         remainingLimit: premium.coverageLimit,
       },
     });
+
+    // Create Stripe Checkout Session
+    const session = await this.stripeService.createCheckoutSession({
+      workerId: params.workerId,
+      policyId: policy.id,
+      amount: premium.weeklyPremium,
+      successUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/?payment=success&id=${policy.id}`,
+      cancelUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/?payment=cancelled`,
+    });
+
+    // Update policy with session ID
+    await this.prisma.policy.update({
+      where: { id: policy.id },
+      data: { stripeSessionId: session.sessionId } as any,
+    });
+
+    return {
+      policy,
+      checkoutUrl: session.url,
+    };
+  }
+
+  async activatePolicy(policyId: string, stripeSessionId: string) {
+    this.logger.log(`Activating policy ${policyId} after successful payment.`);
+    return this.prisma.policy.update({
+      where: { id: policyId },
+      data: {
+        status: 'ACTIVE',
+        stripeSessionId: stripeSessionId,
+      } as any,
+    });
   }
 
   async getActivePolicy(workerId: string) {
     const now = new Date();
+    // Return ACTIVE or PENDING_PAYMENT — the frontend will handle display differently
     const policy = await this.prisma.policy.findFirst({
       where: {
         workerId,
-        status: 'ACTIVE',
+        status: { in: ['ACTIVE', 'PENDING_PAYMENT'] },
         weekEndDate: { gte: now },
       },
       orderBy: { createdAt: 'desc' },
     });
     return policy;
+  }
+
+  async activatePolicyBySession(stripeSessionId: string) {
+    return this.prisma.policy.updateMany({
+      where: { stripeSessionId, status: 'PENDING_PAYMENT' } as any,
+      data: { status: 'ACTIVE' },
+    });
   }
 
   async getPolicyById(id: string) {

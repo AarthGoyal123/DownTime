@@ -143,7 +143,7 @@ export class ClaimService {
         rawPayout,
         finalPayout: isFlagged ? 0 : finalPayout,
         status,
-        fraudFlags,
+        fraudFlags: JSON.stringify(fraudFlags),
         weatherVerified,
         mlFraudScore,
         eventDate: data.eventDate,

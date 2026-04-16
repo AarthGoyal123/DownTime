@@ -61,10 +61,11 @@ model Policy {
   mlPremium       Float?   // ML model predicted premium
   discountApplied Float    @default(0) // no-claim discount %
   riskScore       Float
-  status          String   @default("ACTIVE") // "ACTIVE" | "EXPIRED" | "CANCELLED"
+  status          String   @default("PENDING_PAYMENT") // "ACTIVE" | "EXPIRED" | "CANCELLED" | "PENDING_PAYMENT"
   weekStartDate   DateTime
   weekEndDate     DateTime
   remainingLimit  Float // starts equal to coverageLimit, decremented per payout
+  stripeSessionId String?  @unique
   createdAt       DateTime @default(now())
   claims          Claim[]
 }
@@ -83,7 +84,7 @@ model Claim {
   rawPayout       Float // before caps
   finalPayout     Float // after caps
   status          String   @default("PROCESSING") // "PROCESSING" | "APPROVED" | "PAID" | "FLAGGED" | "REJECTED"
-  fraudFlags      String[] @default([])
+  fraudFlags      String   @default("[]") // Stored as JSON string for SQLite
   weatherVerified Boolean  @default(false)
   mlFraudScore    Float?   // Isolation Forest anomaly score
   eventDate       DateTime
