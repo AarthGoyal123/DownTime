@@ -15,6 +15,11 @@ export class DashboardController {
     return this.dashboardService.getAdminDashboard();
   }
 
+  @Get('company/:id')
+  async getCompanyDashboard(@Param('id') id: string) {
+    return this.dashboardService.getCompanyDashboard(id);
+  }
+
   @Get('admin/predictions/:city')
   async getAdminPredictions(@Param('city') city: string) {
     try {

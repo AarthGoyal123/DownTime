@@ -14,6 +14,8 @@ import { TriggerModule } from './trigger/trigger.module';
 import { ClaimsModule } from './claims/claims.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 
+import { AuthModule } from './auth/auth.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ 
@@ -31,6 +33,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     TriggerModule,
     ClaimsModule,
     DashboardModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

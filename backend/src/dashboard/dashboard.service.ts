@@ -144,6 +144,62 @@ export class DashboardService {
   }
 
   /**
+   * Company manager dashboard — filtered by companyId
+   */
+  async getCompanyDashboard(companyId: string) {
+    const now = new Date();
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    // Get workers in this company
+    const workerIds = (await this.prisma.worker.findMany({
+      where: { companyId },
+      select: { id: true }
+    })).map(w => w.id);
+
+    const [
+      activePoliciesCount,
+      totalWorkers,
+      weeklyPolicies,
+      weeklyClaims,
+      flaggedClaimsCount,
+      allClaims,
+    ] = await Promise.all([
+      this.prisma.policy.count({ where: { workerId: { in: workerIds }, status: 'ACTIVE', weekEndDate: { gte: now } } }),
+      this.prisma.worker.count({ where: { companyId } }),
+      this.prisma.policy.findMany({ where: { workerId: { in: workerIds }, status: 'ACTIVE', createdAt: { gte: weekAgo } } }),
+      this.prisma.claim.findMany({ where: { workerId: { in: workerIds }, status: 'PAID', createdAt: { gte: weekAgo } } }),
+      this.prisma.claim.count({ where: { workerId: { in: workerIds }, status: 'FLAGGED' } }),
+      this.prisma.claim.findMany({ where: { workerId: { in: workerIds }, createdAt: { gte: weekAgo } }, orderBy: { createdAt: 'desc' }, take: 50 }),
+    ]);
+
+    const totalPremiumsThisWeek = weeklyPolicies.reduce((sum, p) => sum + p.weeklyPremium, 0);
+    const totalPayoutsThisWeek = weeklyClaims.reduce((sum, c) => sum + c.finalPayout, 0);
+    const lossRatio = totalPremiumsThisWeek > 0
+      ? Math.round((totalPayoutsThisWeek / totalPremiumsThisWeek) * 100 * 100) / 100
+      : 0;
+
+    const triggerDistribution: Record<string, number> = {};
+    allClaims.forEach((c) => {
+      triggerDistribution[c.triggerType] = (triggerDistribution[c.triggerType] || 0) + 1;
+    });
+
+    return {
+      activePolicies: activePoliciesCount,
+      totalWorkers,
+      totalPremiumsThisWeek: Math.round(totalPremiumsThisWeek * 100) / 100,
+      totalPayoutsThisWeek: Math.round(totalPayoutsThisWeek * 100) / 100,
+      lossRatio,
+      flaggedClaims: flaggedClaimsCount,
+      weeklyClaimsCount: weeklyClaims.length,
+      triggerDistribution,
+      profitability: totalPremiumsThisWeek > 0
+        ? Math.round((totalPremiumsThisWeek - totalPayoutsThisWeek) * 100) / 100
+        : 0,
+    };
+  }
+
+  /**
    * Fraud detection statistics for admin dashboard
    */
   async getFraudStats() {

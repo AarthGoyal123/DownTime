@@ -1,16 +1,14 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
 }
 
 model Worker {
-  id             String   @id @default(cuid())
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
   name           String
   phone          String   @unique
   city           String
@@ -26,11 +24,36 @@ model Worker {
   createdAt      DateTime @default(now())
   policies       Policy[]
   claims         Claim[]
+  
+  // Link to company for analytics
+  companyId      String?  @db.ObjectId
+  company        Company? @relation(fields: [companyId], references: [id])
+}
+
+model Company {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique // e.g., "Zomato", "QuickCommerce Corp"
+  email     String   @unique
+  password  String   // Hashed
+  workers   Worker[]
+  admins    Admin[]
+  createdAt DateTime @default(now())
+}
+
+model Admin {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  password  String   // Hashed
+  name      String
+  role      String   @default("SUPERADMIN") // "SUPERADMIN" | "COMPANY_ADMIN"
+  companyId String?  @db.ObjectId
+  company   Company? @relation(fields: [companyId], references: [id])
+  createdAt DateTime @default(now())
 }
 
 model Policy {
-  id              String   @id @default(cuid())
-  workerId        String
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  workerId        String   @db.ObjectId
   worker          Worker   @relation(fields: [workerId], references: [id])
   coveragePct     Float // 0.50 | 0.70 | 0.90
   coverageLimit   Float // weekly_income x coverage_pct
@@ -47,10 +70,10 @@ model Policy {
 }
 
 model Claim {
-  id              String   @id @default(cuid())
-  workerId        String
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  workerId        String   @db.ObjectId
   worker          Worker   @relation(fields: [workerId], references: [id])
-  policyId        String
+  policyId        String   @db.ObjectId
   policy          Policy   @relation(fields: [policyId], references: [id])
   triggerType     String // "RAIN" | "AQI" | "HEAT" | "ZONE_CLOSURE"
   triggerStart    DateTime
@@ -69,8 +92,8 @@ model Claim {
 }
 
 model Payment {
-  id            String   @id @default(cuid())
-  claimId       String   @unique
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  claimId       String   @unique @db.ObjectId
   claim         Claim    @relation(fields: [claimId], references: [id])
   amount        Float
   method        String // "UPI_MOCK" | "RAZORPAY_TEST"
@@ -80,7 +103,7 @@ model Payment {
 }
 
 model TriggerEvent {
-  id             String    @id @default(cuid())
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
   city           String
   zone           String
   triggerType    String
