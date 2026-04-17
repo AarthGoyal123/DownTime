@@ -3,9 +3,9 @@
 
 ---
 
-## 🚀 Phase 2: Automation & Protection (Current)
+## 🚀 Phase 3: Scale & Optimise (Current)
 **Theme**: "Protect Your Worker"
-This phase is focused on the core automation of parametric insurance, from dynamic premium calculation to zero-touch claim processing for India's gig economy.
+This phase is focused on the core automation of parametric insurance, from dynamic premium calculation to zero-touch claim processing for India's gig economy, along with advanced fraud detection, predictive analytics, and instant payout integrations.
 
 ### 📍 The Problem We're Solving
 India’s platform-based delivery partners (Zomato, Swiggy, Zepto, Amazon, Dunzo etc.) are the backbone of our fast-paced digital economy. However, external disruptions such as extreme weather, pollution, and natural disasters can cause them to lose **20–30% of their monthly earnings**. 
@@ -17,6 +17,7 @@ Build an AI-enabled **parametric insurance platform** that safeguards gig worker
 *   **Target Persona**: Food & Q-Commerce Delivery Partners (e.g., Zepto/Blinkit/Zomato).
 *   **Core Logic**: 100% automated coverage and payouts based on real-time triggers.
 *   **Business Model**: Simple **Weekly Pricing** model aligned with the worker's earnings cycle.
+*   **Phase 3 Features**: Advanced fraud detection, predictive ML insights, and mock instant (Razorpay UPI) payout integrations.
 
 ### 5. SDLC, Security & Protection (Newly Integrated)
 * **Input Parsing:** Native NestJS `ValidationPipe` enabled globally with strict whitelist checking to sanitize all payloads.
@@ -76,11 +77,11 @@ DownTime/
 
 ---
 
-## 🚦 Phase 2 Deliverables Achievement
-- [x] **Registration Process**: Optimized onboarding for delivery partners.
-- [x] **Insurance Policy Management**: Weekly lifecycle management.
-- [x] **Dynamic Premium Calculation**: AI-driven weekly pricing logic implemented.
-- [x] **Claims Management**: Fully automated parametric triggers (Loss of Income).
+## 🚦 Phase 3 Deliverables Achievement
+- [x] **Advanced Fraud Detection**: Implemented ML-driven GPS spoofing and weather discrepancy detection.
+- [x] **Instant Payout System**: Trigger-based instant Mock Razorpay UPI payouts.
+- [x] **Intelligent Dashboard**: Dashboards for worker protections and tracking, along with Insurer ML prediction tracking.
+- [x] **Presentation & Package**: Demo video and Pitch Deck generated.
 
 ---
 *Created for the Guidewire DEVTrails 2026 Hackathon.*
