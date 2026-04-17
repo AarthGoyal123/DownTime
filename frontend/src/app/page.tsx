@@ -232,9 +232,10 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem("downtime_worker_id");
     const role = localStorage.getItem("downtime_role");
+    
     if (saved) {
       setWorkerId(saved);
-<<<<<<< HEAD
+      setUserRole((role as "WORKER" | "ADMIN" | "COMPANY") || "WORKER");
       
       const params = new URLSearchParams(window.location.search);
       if (params.get("payment") === "success") {
@@ -262,13 +263,13 @@ export default function Home() {
             "warning"
           );
         }, 500);
-=======
-      setUserRole((role as "WORKER" | "ADMIN" | "COMPANY") || "WORKER");
-      if (role === 'ADMIN' || role === 'COMPANY') {
-        setView("admin");
->>>>>>> dfb4da2cdfcad6440d28a6ddf5020c7e9b166056
       } else {
-        setView("quote");
+        // Handle role-based view if no payment params
+        if (role === 'ADMIN' || role === 'COMPANY') {
+          setView("admin");
+        } else {
+          setView("quote");
+        }
       }
     }
   }, []);
@@ -323,14 +324,15 @@ export default function Home() {
   };
 
   const handleSignOut = () => {
-<<<<<<< HEAD
     showAlert(
       "Confirm Sign Out",
       "Are you sure you want to sign out? You will need to re-verify your phone number to access your active policies and claim history.",
       "confirm",
       () => {
         localStorage.removeItem("downtime_worker_id");
+        localStorage.removeItem("downtime_role");
         setWorkerId(null);
+        setUserRole("WORKER");
         setDashboardData(null);
         setPremiumData(null);
         setAdminData(null);
@@ -339,18 +341,6 @@ export default function Home() {
         setView("register");
       }
     );
-=======
-    localStorage.removeItem("downtime_worker_id");
-    localStorage.removeItem("downtime_role");
-    setWorkerId(null);
-    setUserRole("WORKER");
-    setDashboardData(null);
-    setPremiumData(null);
-    setAdminData(null);
-    setRegName("");
-    setRegPhone("");
-    setView("register");
->>>>>>> dfb4da2cdfcad6440d28a6ddf5020c7e9b166056
   };
 
   const [adminEmail, setAdminEmail] = useState("");
@@ -372,7 +362,7 @@ export default function Home() {
       setView("admin");
     } catch (err) {
       console.error("Login Error:", err);
-      alert("Admin login failed. Invalid credentials.");
+      showAlert("Login Failed", "Admin login failed. Invalid credentials.", "error");
     } finally {
       setLoading(false);
     }
@@ -394,7 +384,7 @@ export default function Home() {
       setDailyIncome(editIncome);
     } catch (err) {
       console.error("Update Profile Error:", err);
-      alert("Failed to update profile.");
+      showAlert("Update Failed", "Failed to update profile. Please try again later.", "error");
     } finally {
       setLoading(false);
     }
