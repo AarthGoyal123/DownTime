@@ -12,8 +12,9 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Shield, CheckCircle2, ChevronRight, Activity, CloudRain, MapPin, IndianRupee, AlertCircle, History, User, Home as HomeIcon, LogOut, Zap, Wind, Droplets, Sun, Eye, Waves, CloudLightning, Thermometer, Clock, UserPlus, Phone, Briefcase } from "lucide-react";
+import { Shield, CheckCircle2, ChevronRight, Activity, CloudRain, MapPin, IndianRupee, AlertCircle, History, User, Home as HomeIcon, LogOut, Zap, Wind, Droplets, Sun, Eye, Waves, CloudLightning, Thermometer, Clock, UserPlus, Phone, Briefcase, XCircle } from "lucide-react";
 import { api } from "@/lib/axios";
+import { Modal } from "@/components/Modal";
 
 interface PremiumResponse {
   weeklyPremium: number;
@@ -201,6 +202,24 @@ export default function Home() {
   const [regPlatform, setRegPlatform] = useState("zomato");
   const [regIncome, setRegIncome] = useState([700]);
 
+  // Modal State
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "info" | "success" | "warning" | "error" | "confirm";
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const showAlert = (title: string, message: string, type: "info" | "success" | "warning" | "error" | "confirm" = "info", onConfirm?: () => void) => {
+    setModalConfig({ isOpen: true, title, message, type, onConfirm });
+  };
+
   // Check saved worker on mount and handle payment status
   useEffect(() => {
     const saved = localStorage.getItem("downtime_worker_id");
@@ -226,7 +245,13 @@ export default function Home() {
       } else if (params.get("payment") === "cancelled") {
         window.history.replaceState({}, '', '/');
         setView("quote");
-        setTimeout(() => alert("Payment was cancelled. Coverage is not active yet."), 100);
+        setTimeout(() => {
+          showAlert(
+            "Payment Cancelled", 
+            "The payment process was cancelled. Your coverage is not active yet. Please try again to secure your income protection.", 
+            "warning"
+          );
+        }, 500);
       } else {
         setView("quote");
       }
@@ -272,19 +297,32 @@ export default function Home() {
           setCity(loginResp.data.city);
           setView("quote");
         }
-      } catch { alert("Registration failed. Is the backend running?"); }
+      } catch { 
+        showAlert(
+          "Connection Issue", 
+          "We're having trouble reaching the local backend. Please ensure the server is running and try again.", 
+          "error"
+        ); 
+      }
     } finally { setLoading(false); }
   };
 
   const handleSignOut = () => {
-    localStorage.removeItem("downtime_worker_id");
-    setWorkerId(null);
-    setDashboardData(null);
-    setPremiumData(null);
-    setAdminData(null);
-    setRegName("");
-    setRegPhone("");
-    setView("register");
+    showAlert(
+      "Confirm Sign Out",
+      "Are you sure you want to sign out? You will need to re-verify your phone number to access your active policies and claim history.",
+      "confirm",
+      () => {
+        localStorage.removeItem("downtime_worker_id");
+        setWorkerId(null);
+        setDashboardData(null);
+        setPremiumData(null);
+        setAdminData(null);
+        setRegName("");
+        setRegPhone("");
+        setView("register");
+      }
+    );
   };
 
   // Fetch premium calculation
@@ -372,7 +410,11 @@ export default function Home() {
       }
     } catch (err) {
       console.error("Failed to purchase policy", err);
-      alert("Failed to activate policy. Please make sure the backend is running.");
+      showAlert(
+        "Activation Failed", 
+        "We could not activate your policy at this time. This usually happens if the backend server or database is unresponsive.", 
+        "error"
+      );
     } finally { setLoading(false); }
   };
 
@@ -1141,6 +1183,15 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={modalConfig.isOpen}
+        onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        type={modalConfig.type}
+        onConfirm={modalConfig.onConfirm}
+      />
     </div>
   );
 }
